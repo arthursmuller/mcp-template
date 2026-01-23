@@ -13,6 +13,12 @@ const askQuestion = (query: string): Promise<string> => {
 };
 
 // --- Helpers ---
+const toPascalCase = (str: string): string => {
+  return str.split(/[-_]/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join('');
+};
+
 const replaceInFile = (filePath: string, replacements: { search: RegExp | string, replace: string }[]) => {
   const fullPath = path.resolve(filePath);
   if (!fs.existsSync(fullPath)) {
@@ -66,11 +72,13 @@ async function main() {
 
   // 1. Collect Inputs
   const projectName = (await askQuestion("1. Project Name (kebab-case, e.g., my-weather-mcp): ")).trim();
-  const domainName = (await askQuestion("2. Domain Name (PascalCase, e.g., Weather): ")).trim();
+  const domainInput = (await askQuestion("2. Domain Name (kebab-case, e.g., weather-forecast): ")).trim();
   const serviceMethod = (await askQuestion("3. Service Method Name (camelCase, e.g., getForecast): ")).trim();
   const toolName = (await askQuestion("4. Tool Name (snake_case, e.g., get_forecast): ")).trim();
   
-  const domainLower = domainName.toLowerCase();
+  // Transform Inputs
+  const domainDirName = domainInput.toLowerCase();
+  const domainServiceClassName = `${toPascalCase(domainInput)}Service`;
   const toolEnvVar = toolName.toUpperCase();
   
   console.log("\n[INFO] Starting configuration...\n");
@@ -106,35 +114,34 @@ async function main() {
   ]);
 
   // 4. Update Domain Layer
-  // Move folder src/domain -> src/[domainLower]
-  const oldDomainPath = path.join('src', 'domain');
-  const newDomainPath = path.join('src', domainLower);
+  // Move folder src/domain/domain-name -> src/domain/[domainDirName]
+  const oldDomainPath = path.join('src', 'domain', 'domain-name');
+  const newDomainPath = path.join('src', 'domain', domainDirName);
   renameDir(oldDomainPath, newDomainPath);
 
-  // Update src/[domainLower]/service.ts
+  // Update src/domain/[domainDirName]/service.ts
   const serviceFile = path.join(newDomainPath, 'service.ts');
   replaceInFile(serviceFile, [
-    { search: /class DomainService/g, replace: `class ${domainName}Service` },
+    { search: /class DomainService/g, replace: `class ${domainServiceClassName}` },
     // Update the method definition
     { search: /async example\(/g, replace: `async ${serviceMethod}(` },
     // Update the export default new ...
-    { search: /new DomainService\(/g, replace: `new ${domainName}Service(` }
+    { search: /new DomainService\(/g, replace: `new ${domainServiceClassName}(` }
   ]);
 
   // 5. Update MCP Tools Registration (src/mcp/tools.ts)
   // We need to update imports and the usage of the service
   replaceInFile('src/mcp/tools.ts', [
-    // 1. Update Import Path: "../domain/service.js" -> "../weather/service.js"
-    { search: /"\.\.\/domain\/service\.js"/g, replace: `"\.\.\/${domainLower}\/service\.js"` },
+    // 1. Update Import Path: "../domain/domain-name/service.js" -> "../[domainDirName]/service.js"
+    { search: /domain-name\/service\.js/g, replace: `${domainDirName}/service.js` },
     
-    // 2. Update Import Variable: "import DomainService" -> "import WeatherService"
-    // Note: The file likely does "import DomainService from..." so we rename the local var.
-    { search: /import DomainService/g, replace: `import ${domainName}Service` },
+    // 2. Update Import Variable: "import DomainService" -> "import [DomainServiceClassName]"
+    { search: /import DomainService/g, replace: `import ${domainServiceClassName}` },
 
-    // 3. Update Usage in Callback: "DomainService.example" -> "WeatherService.getForecast"
-    { search: /DomainService\.example/g, replace: `${domainName}Service.${serviceMethod}` },
+    // 3. Update Usage in Callback: "DomainService.example" -> "[DomainServiceClassName].[method]"
+    { search: /DomainService\.example/g, replace: `${domainServiceClassName}.${serviceMethod}` },
 
-    // 4. Update Tool Metadata Keys: toolMetadata.example_tool -> toolMetadata.get_forecast
+    // 4. Update Tool Metadata Keys: toolMetadata.example_tool -> toolMetadata.[toolName]
     { search: /toolMetadata\.example_tool/g, replace: `toolMetadata.${toolName}` }
   ]);
 
@@ -142,7 +149,7 @@ async function main() {
   console.log("   Configuration Complete! 🚀");
   console.log("=====================================");
   console.log(`1. Project renamed to: ${projectName}`);
-  console.log(`2. Domain setup: src/${domainLower}/service.ts`);
+  console.log(`2. Domain setup: src/domain/${domainDirName}/service.ts`);
   console.log(`3. Tool configured: ${toolName}`);
   console.log("\nNext Steps:");
   console.log("  npm install");

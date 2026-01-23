@@ -21,11 +21,15 @@ cd {yourFullLocalPathToProject}/{example-mcp-proj-name}
 ```bash
 npm install
 ```
-3. Build the project:
+3. Startup your project:
+```bash
+npm run startup-project
+```
+4. Build the project:
 ```bash
 npm run build
 ```
-4. Run the project:
+5. Run the project:
 ```bash
 npm run start
 ```
