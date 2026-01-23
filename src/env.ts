@@ -3,7 +3,7 @@ import toolMetadata from "./tools.metadata.js";
 const env = {
   SERVER_NAME: "example-mcp-proj-name",
   TOOLS_ENABLED: [
-    process.env.EXAMPLE_TOOL === "true" ? toolMetadata.example_tool.name : null,
+    process.env.EXAMPLE_TOOL === "false" ? null : toolMetadata.example_tool.name,
   ].filter(element => element !== null),
   API: {
     Url: (() : string => {
