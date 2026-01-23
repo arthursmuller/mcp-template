@@ -2,7 +2,7 @@ import z from "zod";
 import { ToolDefinition } from "./utils/dtos.js";
 import toolMetadata from "../tools.metadata.js";
 import buildTool from "./utils/newTool.js";
-import DomainService from "../domain/service.js";
+import DomainService from "../domain/domain-name/service.js";
 
 const tools: Record<string, ToolDefinition> = {
   [toolMetadata.example_tool.name]: {
