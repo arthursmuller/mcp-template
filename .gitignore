@@ -1,0 +1,46 @@
+# --- Dependencies ---
+node_modules/
+/jspm_packages/
+
+# --- Testing & Coverage ---
+coverage/
+.nyc_output/
+
+# --- Production / Build ---
+build/
+dist/
+.docusaurus/
+.serverless/
+
+# --- Misc / Generated Files ---
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Environment Variables (CRITICAL) ---
+# Always ignore .env files to prevent leaking secrets.
+# Commit a template file (e.g., .env.example) instead.
+.env
+.env.*
+!.env.example
+
+# --- IDEs and Editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tgz
+
+# --- Optional: Lock files ---
+# It is generally recommended to COMMIT these, but if you strictly 
+# do not want to lock versions, you can uncomment below:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
