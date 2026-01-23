@@ -1,4 +1,4 @@
-import HttpClient from "../api/client.js";
+import HttpClient from "../../api/client.js";
 import { DomainExampleRequestDto, DomainExampleResponseDto } from "./dtos/domain.dto.js";
 import { getHeaders } from "./utils/api.js";
 
