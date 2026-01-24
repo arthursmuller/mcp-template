@@ -23,6 +23,12 @@ interface DomainInfo {
   absolutePath: string;
 }
 
+interface ClientInfo {
+  fileName: string;
+  className: string;
+  absolutePath: string;
+}
+
 const getDomains = (): DomainInfo[] => {
   const domainsDir = path.resolve('src/domain');
   if (!fs.existsSync(domainsDir)) return [];
@@ -72,6 +78,32 @@ const getDomains = (): DomainInfo[] => {
     }
   }
   return domains;
+};
+
+const  getdbClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[] => {
+  const clientsDir = path.resolve('src/domain', domainDirName, 'clients');
+  if (!fs.existsSync(clientsDir)) return [];
+
+  const clients: ClientInfo[] = [];
+  const files = fs.readdirSync(clientsDir);
+  
+  const suffix = type === 'http' ? '.http.client.ts' : '.db.client.ts';
+
+  for (const file of files) {
+    if (file.endsWith(suffix)) {
+      const clientPath = path.join(clientsDir, file);
+      const content = fs.readFileSync(clientPath, 'utf8');
+      const match = content.match(/export\s+class\s+(\w+)/);
+      if (match && match[1]) {
+        clients.push({
+          fileName: file,
+          className: match[1],
+          absolutePath: clientPath
+        });
+      }
+    }
+  }
+  return clients;
 };
 
 // --- File Manipulation Helpers ---
@@ -127,17 +159,68 @@ async function main() {
   const requestDtoName = `${toPascalCase(methodName)}RequestDto`;
   const responseDtoName = `${toPascalCase(methodName)}ResponseDto`;
 
+
+  // --- Client Selection Logic ---
+  
+  // 1. HTTP Client
+  let selectedHttpClient: ClientInfo | null = null;
+  let httpClientMethodName: string = "";
+  const httpClients =  getdbClients(selectedDomain.dirName, 'http');
+  
+  if (httpClients.length > 0) {
+    const wantHttp = (await askQuestion("\nWant to add a http client method? (y/N): ")).trim().toLowerCase();
+    if (wantHttp === 'y' || wantHttp === 'yes') {
+      if (httpClients.length === 1) {
+        selectedHttpClient = httpClients[0];
+        console.log(`Selected HTTP Client: ${selectedHttpClient.className}`);
+      } else {
+        console.log("Available HTTP Clients:");
+        httpClients.forEach((c, i) => console.log(`  [${i + 1}] ${c.className} (${c.fileName})`));
+        const clientIdx = await askQuestion("Select HTTP Client (number): ");
+        selectedHttpClient = httpClients[parseInt(clientIdx.trim()) - 1];
+      }
+
+      if (selectedHttpClient) {
+        httpClientMethodName = (await askQuestion(`HTTP Client Method Name (default: ${methodName}): `)).trim() || methodName;
+      }
+    }
+  }
+
+  // 2. DB Client
+  let selectedDbClient: ClientInfo | null = null;
+  let dbClientMethodName: string = "";
+  const ybClients = getdbClients(selectedDomain.dirName, 'db');
+
+  if (ybClients.length > 0) {
+    const wantDb = (await askQuestion("\nWant to add a db client method? (y/N): ")).trim().toLowerCase();
+    if (wantDb === 'y' || wantDb === 'yes') {
+      if (ybClients.length === 1) {
+        selectedDbClient = ybClients[0];
+        console.log(`Selected DB Client: ${selectedDbClient.className}`);
+      } else {
+        console.log("Available DB Clients:");
+        ybClients.forEach((c, i) => console.log(`  [${i + 1}] ${c.className} (${c.fileName})`));
+        const clientIdx = await askQuestion("Select DB Client (number): ");
+        selectedDbClient = ybClients[parseInt(clientIdx.trim()) - 1];
+      }
+
+      if (selectedDbClient) {
+        dbClientMethodName = (await askQuestion(`DB Client Method Name (default: ${methodName}): `)).trim() || methodName;
+      }
+    }
+  }
+
   console.log("\n[INFO] Generating tool...\n");
 
   // 2. Update tools.metadata.ts
   injectIntoFile('src/tools.metadata.ts', (content) => {
-    const newEntry = `
+    const QtEntry = `
   ${toolName}: {
     name: "${toolName}",
     description: \`${toolDescription}\`,
   },`;
     // Insert before the last closing brace of the object or before "export default"
-    return content.replace(/(const toolMetadata = {[\s\S]*?)(\n})/m, `$1${newEntry}$2`);
+    return content.replace(/(const toolMetadata = {[\s\S]*?)(\n})/m, `$1${QtEntry}$2`);
   });
 
   // 3. Update env.ts
@@ -148,7 +231,6 @@ async function main() {
   });
 
   // 4. Create DTOs
-  // Logic updated: If absolutePath is .../domain/name/services/file.ts, we want .../domain/name/dtos
   const dtoDir = path.join(path.dirname(selectedDomain.absolutePath), '../dtos');
   if (!fs.existsSync(dtoDir)) fs.mkdirSync(dtoDir, { recursive: true });
 
@@ -163,10 +245,20 @@ async function main() {
     const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${methodName}.dto.js";\n`;
     let newContent = importStmt + content;
 
-    // Append method before the last closing brace of the class
+    // Build method body based on selected clients
+    let methodBody = `    // TODO: Implement logic\n`;
+    
+    if (selectedHttpClient) {
+      methodBody += `    // Example: const data = await this.httpClient.${httpClientMethodName}(dto);\n`;
+      methodBody += `    // return data;\n`;
+    } else if (selectedDbClient) {
+      methodBody += `    // Example: const data = await this.dbClient.${dbClientMethodName}(dto);\n`;
+      methodBody += `    // return data;\n`;
+    } 
+    
     const methodImpl = `
   async ${methodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
-    // TODO: Implement logic
+${methodBody}
     return null;
   }
 `;
@@ -179,7 +271,50 @@ async function main() {
     return newContent;
   });
 
-  // 6. Update src/mcp/tools.ts
+  // 6. Update Clients (Inject Methods)
+
+  // HTTP Client Injection
+  if (selectedHttpClient) {
+    injectIntoFile(selectedHttpClient.absolutePath, (content) => {
+       const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${methodName}.dto.js";\n`;
+       let newContent = importStmt + content;
+
+       const methodImpl = `
+  async ${httpClientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+    // TODO: Implement HTTP Request
+    // return this.httpClient.post<${responseDtoName}>("/path", dto);
+    return null;
+  }
+`;
+       const lastBraceIndex = newContent.lastIndexOf('}');
+       if (lastBraceIndex !== -1) {
+         newContent = newContent.slice(0, lastBraceIndex) + methodImpl + newContent.slice(lastBraceIndex);
+       }
+       return newContent;
+    });
+  }
+
+  // DB Client Injection
+  if (selectedDbClient) {
+    injectIntoFile(selectedDbClient.absolutePath, (content) => {
+       const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${methodName}.dto.js";\n`;
+       let newContent = importStmt + content;
+
+       const methodImpl = `
+  async ${dbClientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+    // TODO: Implement DB Operation
+    return null;
+  }
+`;
+       const lastBraceIndex = newContent.lastIndexOf('}');
+       if (lastBraceIndex !== -1) {
+         newContent = newContent.slice(0, lastBraceIndex) + methodImpl + newContent.slice(lastBraceIndex);
+       }
+       return newContent;
+    });
+  }
+
+  // 7. Update src/mcp/tools.ts
   injectIntoFile('src/mcp/tools.ts', (content) => {
     let newContent = content;
 
@@ -235,8 +370,10 @@ async function main() {
   console.log("=====================================");
   console.log(`Don't forget to:`);
   console.log(`1. Implement the logic in ${selectedDomain.absolutePath}`);
-  console.log(`2. Define properties in the new DTO file: ${dtoFile}`);
-  console.log(`3. Define the Zod schema in src/mcp/tools.ts`);
+  if (selectedHttpClient) console.log(`2. Implement client logic in ${selectedHttpClient.fileName}`);
+  if (selectedDbClient) console.log(`3. Implement client logic in ${selectedDbClient.fileName}`);
+  console.log(`4. Define properties in the new DTO file: ${dtoFile}`);
+  console.log(`5. Define the Zod schema in src/mcp/tools.ts`);
   
   rl.close();
 }
