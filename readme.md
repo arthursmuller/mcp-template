@@ -57,6 +57,21 @@ You must respect the separation of concerns defined in the project structure:
 
 ## 3. Development Workflow
 
+### CLI Generators (Recommended)
+This template includes interactive CLI scripts to automate routine tasks and ensure architectural consistency. Run these commands in your terminal and follow the prompts:
+
+* **`npm run new-domain`**
+    * Creates a new domain module structure (folders for clients, services, DTOs).
+    * Use this when adding a distinct area of functionality (e.g., `weather`, `user-management`).
+* **`npm run new-service`**
+    * Adds a new business logic service class to an existing domain.
+* **`npm run new-client`**
+    * Generates an HTTP or Database client wrapper within a domain.
+    * Ensures consistent error handling and connection injection.
+* **`npm run new-tool`**
+    * **Automates the entire "Add a New Tool" process.**
+    * It prompts for the domain/service to use, generates the DTOs, injects the method into the Service class, updates `tools.metadata.ts`, and registers the tool in `src/mcp/tools.ts`.
+
 ### How to Add a New Tool
 To add a new capability to this server, follow this 5-step process to maintain consistency:
 
