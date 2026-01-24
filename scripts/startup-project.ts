@@ -109,12 +109,20 @@ async function main() {
   const domainInput = (await askQuestion("2. Domain Name (kebab-case, e.g., weather-forecast): ")).trim();
   const serviceMethod = (await askQuestion("3. Service Method Name (camelCase, e.g., getForecast): ")).trim();
   const toolName = (await askQuestion("4. Tool Name (snake_case, e.g., get_forecast): ")).trim();
+  const clientMethodName = (await askQuestion("5. Domain Client Method Name (camelCase, e.g., fetchForecast): ")).trim();
   
   // Transform Inputs
   const domainDirName = domainInput.toLowerCase();
-  const domainServiceClassName = `${toPascalCase(domainInput)}Service`;
+  const domainPascalCase = toPascalCase(domainInput);
+  const domainServiceClassName = `${domainPascalCase}Service`;
   const toolEnvVar = toolName.toUpperCase();
   const domainServiceFileName = `${domainInput}.service.ts`;
+
+  // Client transforms
+  const dbClientClassName = `${domainPascalCase}DbClient`;
+  const httpClientClassName = `${domainPascalCase}HttpClient`;
+  const dbClientFileName = `${domainInput}.db.client.ts`;
+  const httpClientFileName = `${domainInput}.http.client.ts`;
 
   // DTO Names (Ensure pascal case from camel case input)
   const serviceMethodPascal = serviceMethod.charAt(0).toUpperCase() + serviceMethod.slice(1);
@@ -173,6 +181,37 @@ async function main() {
     { search: /DomainExampleResponseDto/g, replace: responseDto }
   ]);
 
+  // --- Update Clients ---
+  const clientsDir = path.join(newDomainPath, 'clients');
+  const oldDbClientPath = path.join(clientsDir, 'domain.db.client.ts');
+  const newDbClientPath = path.join(clientsDir, dbClientFileName);
+  const oldHttpClientPath = path.join(clientsDir, 'domain.http.client.ts');
+  const newHttpClientPath = path.join(clientsDir, httpClientFileName);
+
+  // Rename Client Files
+  renameDir(oldDbClientPath, newDbClientPath);
+  renameDir(oldHttpClientPath, newHttpClientPath);
+
+  // Update DB Client Content
+  replaceInFile(newDbClientPath, [
+    { search: /class DomainDbClient/g, replace: `class ${dbClientClassName}` },
+    { search: /async example\(/g, replace: `async ${clientMethodName}(` },
+    // DTO Updates
+    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${serviceMethod}.dto.js"` },
+    { search: /DomainExampleRequestDto/g, replace: requestDto },
+    { search: /DomainExampleResponseDto/g, replace: responseDto }
+  ]);
+
+  // Update HTTP Client Content
+  replaceInFile(newHttpClientPath, [
+    { search: /class DomainHttpClient/g, replace: `class ${httpClientClassName}` },
+    { search: /async example\(/g, replace: `async ${clientMethodName}(` },
+    // DTO Updates
+    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${serviceMethod}.dto.js"` },
+    { search: /DomainExampleRequestDto/g, replace: requestDto },
+    { search: /DomainExampleResponseDto/g, replace: responseDto }
+  ]);
+
   // Update src/domain/[domainDirName]/services/domain.ts -> [domainInput].service.ts
   const servicesDir = path.join(newDomainPath, 'services');
   const oldServiceFile = path.join(servicesDir, 'domain.service.ts'); // Current default file in template
@@ -189,8 +228,17 @@ async function main() {
     { search: /class DomainService/g, replace: `class ${domainServiceClassName}` },
     // Update the method definition
     { search: /async example\(/g, replace: `async ${serviceMethod}(` },
+    
+    // Update Imports to point to new client file and class
+    { search: /"\.\.\/clients\/domain\.http\.client\.js"/g, replace: `"../clients/${httpClientFileName.replace('.ts', '.js')}"` },
+    { search: /DomainHttpClient/g, replace: httpClientClassName },
+    
+    // Update usage of client method
+    { search: /this\.httpClient\.example\(/g, replace: `this.httpClient.${clientMethodName}(` },
+
     // Update the export default new ...
     { search: /new DomainService\(/g, replace: `new ${domainServiceClassName}(` },
+    
     // Update DTO imports (handling the new DTO filename)
     { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${serviceMethod}.dto.js"` },
     { search: /DomainExampleRequestDto/g, replace: requestDto },
@@ -218,7 +266,8 @@ async function main() {
   console.log("=====================================");
   console.log(`1. Project renamed to: ${projectName}`);
   console.log(`2. Domain setup: src/domain/${domainDirName}/services/${domainServiceFileName}`);
-  console.log(`3. Tool configured: ${toolName}`);
+  console.log(`3. Clients setup: src/domain/${domainDirName}/clients/`);
+  console.log(`4. Tool configured: ${toolName}`);
   console.log("\nNext Steps:");
   console.log("  npm install");
   console.log("  npm run build");
