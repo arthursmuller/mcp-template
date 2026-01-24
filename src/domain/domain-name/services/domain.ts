@@ -1,6 +1,7 @@
-import HttpClient from "../../api/client.js";
-import { DomainExampleRequestDto, DomainExampleResponseDto } from "./dtos/domain.dto.js";
-import { getHeaders } from "./utils/api.js";
+import HttpClient from "../../../api/client.js";
+import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domain.dto.js";
+import { getHeaders } from "../utils/api.js";
+
 
 export class DomainService {
   constructor(private readonly httpClient: HttpClient) {}
