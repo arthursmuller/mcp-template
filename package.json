@@ -10,7 +10,9 @@
     "dev": "ts-node index.ts",
     "startup-project": "node --loader ts-node/esm scripts/startup-project.ts",
     "new-tool": "node --loader ts-node/esm scripts/scaffold-tool.ts",
-    "new-service": "node --loader ts-node/esm scripts/scaffold-service.ts"
+    "new-service": "node --loader ts-node/esm scripts/scaffold-service.ts",
+    "new-domain": "node --loader ts-node/esm scripts/scaffold-domain.ts",
+    "new-client": "node --loader ts-node/esm scripts/scaffold-client.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.1",
