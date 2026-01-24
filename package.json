@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node index.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "startup-project": "node --loader ts-node/esm scripts/startup-project.ts",
     "new-tool": "node --loader ts-node/esm scripts/scaffold-tool.ts",
     "new-service": "node --loader ts-node/esm scripts/scaffold-service.ts",
@@ -20,9 +22,13 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.9",
+    "eslint": "^9.39.2",
+    "globals": "^17.1.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.53.1"
   }
 }

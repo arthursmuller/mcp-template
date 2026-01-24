@@ -19,11 +19,6 @@ const toPascalCase = (str: string): string => {
     .join('');
 };
 
-const toCamelCase = (str: string): string => {
-  const pascal = toPascalCase(str);
-  return pascal.charAt(0).toLowerCase() + pascal.slice(1);
-}
-
 interface DomainInfo {
   dirName: string;
   absolutePath: string;
