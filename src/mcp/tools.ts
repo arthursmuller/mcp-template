@@ -12,7 +12,7 @@ const tools: Record<string, ToolDefinition> = {
       exampleParam: z.string().describe(`Example Tool param description`),
     },
     callback: buildTool(DomainService.example)
-  }
+  },
 }
 
 export default tools;
