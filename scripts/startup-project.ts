@@ -114,6 +114,11 @@ async function main() {
   const domainDirName = domainInput.toLowerCase();
   const domainServiceClassName = `${toPascalCase(domainInput)}Service`;
   const toolEnvVar = toolName.toUpperCase();
+
+  // DTO Names (Ensure pascal case from camel case input)
+  const serviceMethodPascal = serviceMethod.charAt(0).toUpperCase() + serviceMethod.slice(1);
+  const requestDto = `${serviceMethodPascal}RequestDto`;
+  const responseDto = `${serviceMethodPascal}ResponseDto`;
   
   console.log("\n[INFO] Starting configuration...\n");
 
@@ -153,6 +158,20 @@ async function main() {
   const newDomainPath = path.join('src', 'domain', domainDirName);
   renameDir(oldDomainPath, newDomainPath);
 
+  // Update DTOs
+  const dtoDir = path.join(newDomainPath, 'dtos');
+  const oldDtoPath = path.join(dtoDir, 'domain.dto.ts');
+  const newDtoPath = path.join(dtoDir, `${serviceMethod}.dto.ts`);
+  
+  // Rename DTO file
+  renameDir(oldDtoPath, newDtoPath);
+
+  // Update DTO content
+  replaceInFile(newDtoPath, [
+    { search: /DomainExampleRequestDto/g, replace: requestDto },
+    { search: /DomainExampleResponseDto/g, replace: responseDto }
+  ]);
+
   // Update src/domain/[domainDirName]/service.ts
   const serviceFile = path.join(newDomainPath, 'service.ts');
   replaceInFile(serviceFile, [
@@ -160,7 +179,11 @@ async function main() {
     // Update the method definition
     { search: /async example\(/g, replace: `async ${serviceMethod}(` },
     // Update the export default new ...
-    { search: /new DomainService\(/g, replace: `new ${domainServiceClassName}(` }
+    { search: /new DomainService\(/g, replace: `new ${domainServiceClassName}(` },
+    // Update DTO imports
+    { search: /"\.\/dtos\/domain\.dto\.js"/g, replace: `"./dtos/${serviceMethod}.dto.js"` },
+    { search: /DomainExampleRequestDto/g, replace: requestDto },
+    { search: /DomainExampleResponseDto/g, replace: responseDto }
   ]);
 
   // 5. Update MCP Tools Registration (src/mcp/tools.ts)
