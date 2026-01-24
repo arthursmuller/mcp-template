@@ -13,6 +13,6 @@
   "ts-node": {
     "esm": true
   },
-"include": ["**/*.ts", "**/*.js", "eslint.config.mjs"],
+  "include": ["**/*.ts", "**/*.js"],
   "exclude": ["node_modules", "dist"]
 }
