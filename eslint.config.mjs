@@ -22,6 +22,15 @@ export default [
     },
     // 2. Define Architecture Boundaries
     settings: {
+      "import/resolver": {
+        typescript: {
+          alwaysTryTypes: true,
+          project: ["./tsconfig.json"], // Use an array for safety
+        },
+        node: {
+          extensions: [".js", ".ts", ".tsx"] // Explicitly tell Node resolver about TS
+        }
+      },
       "boundaries/include": ["src/**/*"],
       "boundaries/elements": [
         // MCP Layer
