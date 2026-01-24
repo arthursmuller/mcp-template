@@ -163,8 +163,7 @@ async function main() {
   injectIntoFile('src/mcp/tools.ts', (content) => {
     let newContent = content;
 
-    // Ensure Domain Service is imported.
-    // Check if the class is already imported.
+    // Ensure Domain Service is imported
     if (!newContent.includes(`import ${selectedDomain.className}`)) {
        newContent = `import ${selectedDomain.className} from "../domain/${selectedDomain.dirName}/service.js";\n` + newContent;
     }
@@ -181,8 +180,36 @@ async function main() {
     callback: buildTool(${selectedDomain.className}.${methodName})
   },`;
 
-    // Insert before the closing brace of the 'tools' object
-    newContent = newContent.replace(/(const tools: Record<string, ToolDefinition> = {[\s\S]*?)(\n})/m, `$1,${toolDef}$2`);
+    // Regex to capture the tools object content
+    newContent = newContent.replace(
+      /(const tools: Record<string, ToolDefinition> = {[\s\S]*?)(\n})/m, 
+      (match, p1, p2) => {
+        // p1 = Content inside the tools object
+        // p2 = The closing brace "}" of the main object
+
+        let modifiedContent = p1;
+        
+        // Find the last closing brace '}' inside the current tools object
+        const lastBraceIndex = modifiedContent.lastIndexOf('}');
+        
+        // Ensure we found a brace and it's not the opening brace of the main object
+        if (lastBraceIndex !== -1 && lastBraceIndex > modifiedContent.indexOf('{')) {
+             // Check if a comma already follows this brace (ignoring whitespace/newlines)
+             const contentAfterBrace = modifiedContent.slice(lastBraceIndex + 1);
+             
+             if (!contentAfterBrace.trim().startsWith(',')) {
+                 // Insert comma exactly at the index after the '}'
+                 modifiedContent = 
+                    modifiedContent.slice(0, lastBraceIndex + 1) + 
+                    ',' + 
+                    modifiedContent.slice(lastBraceIndex + 1);
+             }
+        }
+        
+        // Append the new tool definition at the end
+        return `${modifiedContent}${toolDef}${p2}`;
+      }
+    );
 
     return newContent;
   });
