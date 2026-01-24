@@ -114,6 +114,7 @@ async function main() {
   const domainDirName = domainInput.toLowerCase();
   const domainServiceClassName = `${toPascalCase(domainInput)}Service`;
   const toolEnvVar = toolName.toUpperCase();
+  const domainServiceFileName = `${domainInput}.service.ts`;
 
   // DTO Names (Ensure pascal case from camel case input)
   const serviceMethodPascal = serviceMethod.charAt(0).toUpperCase() + serviceMethod.slice(1);
@@ -172,16 +173,26 @@ async function main() {
     { search: /DomainExampleResponseDto/g, replace: responseDto }
   ]);
 
-  // Update src/domain/[domainDirName]/service.ts
-  const serviceFile = path.join(newDomainPath, 'service.ts');
-  replaceInFile(serviceFile, [
+  // Update src/domain/[domainDirName]/services/domain.ts -> [domainInput].service.ts
+  const servicesDir = path.join(newDomainPath, 'services');
+  const oldServiceFile = path.join(servicesDir, 'domain.ts'); // Current default file in template
+  const newServiceFile = path.join(servicesDir, domainServiceFileName); // New specific name
+
+  if (fs.existsSync(oldServiceFile)) {
+    fs.renameSync(oldServiceFile, newServiceFile);
+    console.log(`[QK] Renamed ${oldServiceFile} to ${newServiceFile}`);
+  } else {
+    console.warn(`[WARN] Service file not found at ${oldServiceFile}`);
+  }
+
+  replaceInFile(newServiceFile, [
     { search: /class DomainService/g, replace: `class ${domainServiceClassName}` },
     // Update the method definition
     { search: /async example\(/g, replace: `async ${serviceMethod}(` },
     // Update the export default new ...
     { search: /new DomainService\(/g, replace: `new ${domainServiceClassName}(` },
-    // Update DTO imports
-    { search: /"\.\/dtos\/domain\.dto\.js"/g, replace: `"./dtos/${serviceMethod}.dto.js"` },
+    // Update DTO imports (handling the new DTO filename)
+    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${serviceMethod}.dto.js"` },
     { search: /DomainExampleRequestDto/g, replace: requestDto },
     { search: /DomainExampleResponseDto/g, replace: responseDto }
   ]);
@@ -189,8 +200,8 @@ async function main() {
   // 5. Update MCP Tools Registration (src/mcp/tools.ts)
   // We need to update imports and the usage of the service
   replaceInFile('src/mcp/tools.ts', [
-    // 1. Update Import Path: "../domain/domain-name/service.js" -> "../[domainDirName]/service.js"
-    { search: /domain-name\/service\.js/g, replace: `${domainDirName}/service.js` },
+    // 1. Update Import Path: "../domain/domain-name/services/domain.js" -> "../[domainDirName]/services/[domainInput].service.js"
+    { search: /domain-name\/services\/domain\.js/g, replace: `${domainDirName}/services/${domainServiceFileName.replace('.ts', '.js')}` },
     
     // 2. Update Import Variable: "import DomainService" -> "import [DomainServiceClassName]"
     { search: /import DomainService/g, replace: `import ${domainServiceClassName}` },
@@ -206,7 +217,7 @@ async function main() {
   console.log("   Configuration Complete! 🚀");
   console.log("=====================================");
   console.log(`1. Project renamed to: ${projectName}`);
-  console.log(`2. Domain setup: src/domain/${domainDirName}/service.ts`);
+  console.log(`2. Domain setup: src/domain/${domainDirName}/services/${domainServiceFileName}`);
   console.log(`3. Tool configured: ${toolName}`);
   console.log("\nNext Steps:");
   console.log("  npm install");
