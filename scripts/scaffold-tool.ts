@@ -55,8 +55,7 @@ const getDomains = (): DomainInfo[] => {
                  className: match[1],
                  absolutePath: servicePath
                });
-               // Assume one service per domain for now
-               break; 
+               // Removed the 'break' here to allow listing multiple services per domain
              }
           }
         }
@@ -324,10 +323,21 @@ ${methodBody}
        // e.g. ../domain/<dir>/services/<file>.js
        const toolsDir = path.resolve('src/mcp');
        const relativePath = path.relative(toolsDir, selectedDomain.absolutePath);
-       // Ensure POSIX paths for imports and replace extension
-       const importPath = relativePath.split(path.sep).join('/').replace(/\.ts$/, '.js');
        
-       newContent = `import ${selectedDomain.className} from "./${importPath}";\n` + newContent;
+       // Ensure POSIX paths for imports and replace extension
+       let importPath = relativePath.split(path.sep).join('/').replace(/\.ts$/, '.js');
+       
+       // Handle relative path prefix (avoid "./../")
+       if (!importPath.startsWith('.')) {
+         importPath = `./${importPath}`;
+       }
+       
+       newContent = `import ${selectedDomain.className} from "${importPath}";\n` + newContent;
+    }
+
+    // Ensure we define the tool correctly in the existing tools object
+    if (!newContent.includes(`import ${selectedDomain.className}`)) {
+       // Fallback check if the class name used in import differs (unlikely with this script)
     }
 
     // Add the tool definition
@@ -342,13 +352,14 @@ ${methodBody}
     callback: buildTool(${selectedDomain.className}.${methodName})
   },`;
 
-    // Regex to capture the tools object content
+    // Regex to capture the tools object content and append the new tool
     newContent = newContent.replace(
       /(const tools: Record<string, ToolDefinition> = {[\s\S]*?)(\n})/m, 
       (match, p1, p2) => {
         let modifiedContent = p1;
         const lastBraceIndex = modifiedContent.lastIndexOf('}');
         
+        // Add a comma if the previous entry didn't have one
         if (lastBraceIndex !== -1 && lastBraceIndex > modifiedContent.indexOf('{')) {
              const contentAfterBrace = modifiedContent.slice(lastBraceIndex + 1);
              if (!contentAfterBrace.trim().startsWith(',')) {
