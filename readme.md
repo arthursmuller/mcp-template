@@ -10,19 +10,30 @@ This is a **Model Context Protocol (MCP)** server that ...
 
 You must respect the separation of concerns defined in the project structure:
 
+You must respect the separation of concerns defined in the project structure. These boundaries are **strictly enforced via ESLint**:
+
 * **Entry Point (`index.ts`)**: Initializes the server, connects the transport, and handles the main process loop.
 * **MCP Layer (`src/mcp/`)**: Handles tool definitions, input validation (Zod), and response formatting.
-    * `src/mcp/tools.ts`: The registry where tool inputs are mapped to domain functions.
-    * `src/mcp/utils/`: Contains helpers for building the server, standardizing responses (`toolSuccessResponse`, `toolErrorResponse`), and wrapping functions.
+* `src/mcp/tools.ts`: The registry where tool inputs are mapped to domain functions.
+* **Boundary**: Cannot import directly from `src/api`, Domain Clients, or Domain Utils. It must access functionality **only** via Domain Services.
+
+* `src/mcp/utils/`: Helpers for standardizing responses (`toolSuccessResponse`, `toolErrorResponse`) and wrapping functions.
+
 * **Domain Layer (`src/domain/`)**: Contains the business logic and API orchestration.
-    * `src/domain/service.ts`: The main service class where logic resides. It returns typed DTOs or `null`.
-    * `src/domain/dtos/`: TypeScript interfaces defining the shape of data flowing in and out of the service.
+* **Boundary**: This layer is protected; it **cannot** import from the `src/mcp` layer.
+* `src/domain/**/services/`: The main service classes where logic resides.
+* **Boundary**: Services cannot import directly from `src/api`. They must access external data via Domain Clients.
+
+* `src/domain/dtos/`: TypeScript interfaces defining the shape of data flowing in and out of the service.
+
 * **Infrastructure Layer (`src/api/`)**:
-    * `src/api/client.ts`: A wrapper around axios for making HTTP requests to external APIs.
+* `src/api/client.ts`: A wrapper around axios for making HTTP requests to external APIs.
+
 * **Configuration (`src/env.ts`)**:
-  * Centralized environment variable management. **Never hardcode secrets or URLs; add them here.**
+* Centralized environment variable management. **Never hardcode secrets or URLs; add them here.**
+
 * **Tool Descriptions (`src/tools.metadata.ts`)**:
-  * Centralized tools text descriptions.
+* Centralized tools text descriptions.
 
 ## 2. Installation & Initialization
 

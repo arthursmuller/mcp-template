@@ -90,6 +90,7 @@ export default [
             group: [
               "**/domain/**/clients/**", 
               "**/domain/**/utils/**", 
+              "**/domain/**/dtos/**", 
             ],
             message: "Architectural Violation: tools.ts cannot import Domain Services directly. Use Domain Models or other abstractions instead.",
           }
