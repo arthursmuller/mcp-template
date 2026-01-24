@@ -127,18 +127,15 @@ async function main() {
   const dtoDir = path.join(path.dirname(selectedDomain.absolutePath), 'dtos');
   if (!fs.existsSync(dtoDir)) fs.mkdirSync(dtoDir, { recursive: true });
 
-  const requestDtoFile = path.join(dtoDir, `${methodName}Request.dto.ts`);
-  const responseDtoFile = path.join(dtoDir, `${methodName}Response.dto.ts`);
+  const dtoFile = path.join(dtoDir, `${methodName}.dto.ts`);
 
-  fs.writeFileSync(requestDtoFile, `export interface ${requestDtoName} {\n  // TODO: Add properties\n}\n`);
-  fs.writeFileSync(responseDtoFile, `export interface ${responseDtoName} {\n  // TODO: Add properties\n}\n`);
-  console.log(`[CREATE] Created ${requestDtoFile}`);
-  console.log(`[CREATE] Created ${responseDtoFile}`);
+  fs.writeFileSync(dtoFile, `export interface ${requestDtoName} {\n  // TODO: Add properties\n}\n\nexport interface ${responseDtoName} {\n  // TODO: Add properties\n}\n`);
+  console.log(`[CREATE] Created ${dtoFile}`);
 
   // 5. Update Domain Service (Append Method)
   injectIntoFile(selectedDomain.absolutePath, (content) => {
     // Add imports
-    const importStmt = `import { ${requestDtoName} } from "./dtos/${methodName}Request.dto.js";\nimport { ${responseDtoName} } from "./dtos/${methodName}Response.dto.js";\n`;
+    const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "./dtos/${methodName}.dto.js";\n`;
     let newContent = importStmt + content;
 
     // Append method before the last closing brace of the class
@@ -219,7 +216,7 @@ async function main() {
   console.log("=====================================");
   console.log(`Don't forget to:`);
   console.log(`1. Implement the logic in ${selectedDomain.absolutePath}`);
-  console.log(`2. Define properties in the new DTO files`);
+  console.log(`2. Define properties in the new DTO file: src/domain/${selectedDomain.dirName}/dtos/${methodName}.dto.ts`);
   console.log(`3. Define the Zod schema in src/mcp/tools.ts`);
   
   rl.close();
