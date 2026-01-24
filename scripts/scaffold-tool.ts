@@ -32,17 +32,41 @@ const getDomains = (): DomainInfo[] => {
 
   for (const entry of entries) {
     if (entry.isDirectory()) {
-      const servicePath = path.join(domainsDir, entry.name, 'service.ts');
-      if (fs.existsSync(servicePath)) {
-        const content = fs.readFileSync(servicePath, 'utf8');
-        // Regex to find "export class ClassName"
-        const match = content.match(/export\s+class\s+(\w+)/);
-        if (match && match[1]) {
-          domains.push({
-            dirName: entry.name,
-            className: match[1],
-            absolutePath: servicePath
-          });
+      // Support new structure: src/domain/<name>/services/<file>.ts
+      const servicesDir = path.join(domainsDir, entry.name, 'services');
+      
+      if (fs.existsSync(servicesDir) && fs.statSync(servicesDir).isDirectory()) {
+        const files = fs.readdirSync(servicesDir);
+        for (const file of files) {
+          if (file.endsWith('.ts')) {
+             const servicePath = path.join(servicesDir, file);
+             const content = fs.readFileSync(servicePath, 'utf8');
+             // Regex to find "export class ClassName"
+             const match = content.match(/export\s+class\s+(\w+)/);
+             if (match && match[1]) {
+               domains.push({
+                 dirName: entry.name,
+                 className: match[1],
+                 absolutePath: servicePath
+               });
+               // Assume one service per domain for now
+               break; 
+             }
+          }
+        }
+      } else {
+        // Fallback/Legacy check: src/domain/<name>/service.ts
+        const servicePath = path.join(domainsDir, entry.name, 'service.ts');
+        if (fs.existsSync(servicePath)) {
+          const content = fs.readFileSync(servicePath, 'utf8');
+          const match = content.match(/export\s+class\s+(\w+)/);
+          if (match && match[1]) {
+            domains.push({
+              dirName: entry.name,
+              className: match[1],
+              absolutePath: servicePath
+            });
+          }
         }
       }
     }
@@ -124,7 +148,8 @@ async function main() {
   });
 
   // 4. Create DTOs
-  const dtoDir = path.join(path.dirname(selectedDomain.absolutePath), 'dtos');
+  // Logic updated: If absolutePath is .../domain/name/services/file.ts, we want .../domain/name/dtos
+  const dtoDir = path.join(path.dirname(selectedDomain.absolutePath), '../dtos');
   if (!fs.existsSync(dtoDir)) fs.mkdirSync(dtoDir, { recursive: true });
 
   const dtoFile = path.join(dtoDir, `${methodName}.dto.ts`);
@@ -135,19 +160,17 @@ async function main() {
   // 5. Update Domain Service (Append Method)
   injectIntoFile(selectedDomain.absolutePath, (content) => {
     // Add imports
-    const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "./dtos/${methodName}.dto.js";\n`;
+    const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${methodName}.dto.js";\n`;
     let newContent = importStmt + content;
 
     // Append method before the last closing brace of the class
-    // We assume standard formatting where the class ends with a } on a new line before export default or EOF
     const methodImpl = `
   async ${methodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
     // TODO: Implement logic
     return null;
   }
 `;
-    // Locate the closing brace of the class. This regex looks for the last '}' before 'export default' or end of file.
-    // It's a heuristic that works for the provided template structure.
+    // Locate the closing brace of the class. 
     const lastBraceIndex = newContent.lastIndexOf('}');
     if (lastBraceIndex !== -1) {
       newContent = newContent.slice(0, lastBraceIndex) + methodImpl + newContent.slice(lastBraceIndex);
@@ -162,7 +185,14 @@ async function main() {
 
     // Ensure Domain Service is imported
     if (!newContent.includes(`import ${selectedDomain.className}`)) {
-       newContent = `import ${selectedDomain.className} from "../domain/${selectedDomain.dirName}/service.js";\n` + newContent;
+       // Calculate relative path from src/mcp/tools.ts to the service file
+       // e.g. ../domain/<dir>/services/<file>.js
+       const toolsDir = path.resolve('src/mcp');
+       const relativePath = path.relative(toolsDir, selectedDomain.absolutePath);
+       // Ensure POSIX paths for imports and replace extension
+       const importPath = relativePath.split(path.sep).join('/').replace(/\.ts$/, '.js');
+       
+       newContent = `import ${selectedDomain.className} from "./${importPath}";\n` + newContent;
     }
 
     // Add the tool definition
@@ -181,29 +211,18 @@ async function main() {
     newContent = newContent.replace(
       /(const tools: Record<string, ToolDefinition> = {[\s\S]*?)(\n})/m, 
       (match, p1, p2) => {
-        // p1 = Content inside the tools object
-        // p2 = The closing brace "}" of the main object
-
         let modifiedContent = p1;
-        
-        // Find the last closing brace '}' inside the current tools object
         const lastBraceIndex = modifiedContent.lastIndexOf('}');
         
-        // Ensure we found a brace and it's not the opening brace of the main object
         if (lastBraceIndex !== -1 && lastBraceIndex > modifiedContent.indexOf('{')) {
-             // Check if a comma already follows this brace (ignoring whitespace/newlines)
              const contentAfterBrace = modifiedContent.slice(lastBraceIndex + 1);
-             
              if (!contentAfterBrace.trim().startsWith(',')) {
-                 // Insert comma exactly at the index after the '}'
                  modifiedContent = 
                     modifiedContent.slice(0, lastBraceIndex + 1) + 
                     ',' + 
                     modifiedContent.slice(lastBraceIndex + 1);
              }
         }
-        
-        // Append the new tool definition at the end
         return `${modifiedContent}${toolDef}${p2}`;
       }
     );
@@ -216,7 +235,7 @@ async function main() {
   console.log("=====================================");
   console.log(`Don't forget to:`);
   console.log(`1. Implement the logic in ${selectedDomain.absolutePath}`);
-  console.log(`2. Define properties in the new DTO file: src/domain/${selectedDomain.dirName}/dtos/${methodName}.dto.ts`);
+  console.log(`2. Define properties in the new DTO file: ${dtoFile}`);
   console.log(`3. Define the Zod schema in src/mcp/tools.ts`);
   
   rl.close();

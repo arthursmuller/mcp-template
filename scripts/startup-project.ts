@@ -175,7 +175,7 @@ async function main() {
 
   // Update src/domain/[domainDirName]/services/domain.ts -> [domainInput].service.ts
   const servicesDir = path.join(newDomainPath, 'services');
-  const oldServiceFile = path.join(servicesDir, 'domain.ts'); // Current default file in template
+  const oldServiceFile = path.join(servicesDir, 'domain.service.ts'); // Current default file in template
   const newServiceFile = path.join(servicesDir, domainServiceFileName); // New specific name
 
   if (fs.existsSync(oldServiceFile)) {
