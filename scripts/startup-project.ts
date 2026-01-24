@@ -64,6 +64,40 @@ const renameDir = (oldPath: string, newPath: string) => {
   }
 };
 
+const removeCommandFromPackageJson = () => {
+   try {
+    const packageJsonPath = path.resolve('package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8');
+      const packageJson = JSON.parse(packageJsonContent);
+
+      if (packageJson.scripts && packageJson.scripts['startup-project']) {
+        delete packageJson.scripts['startup-project'];
+        // Write back with 2-space indentation
+        fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf8');
+        console.log("[QK] Removed 'startup-project' script from package.json");
+      }
+    }
+  } catch (err) {
+    console.warn("[WARN] Failed to remove 'startup-project' script from package.json", err);
+  }
+}
+
+
+const deleteStartupScriptFile = () => {
+  try {
+    // Assuming the script is run from the project root via "npm run startup-project"
+    const scriptPath = path.join(process.cwd(), 'scripts', 'startup-project.ts');
+    if (fs.existsSync(scriptPath)) {
+      fs.unlinkSync(scriptPath);
+      console.log(`\n[INFO] Cleanup: Startup script deleted (${scriptPath})`);
+    }
+  } catch (error) {
+    console.warn(`\n[WARN] Failed to delete startup script automatically:`, error);
+  }
+}
+
+
 // --- Main Script ---
 async function main() {
   console.log("=====================================");
@@ -157,6 +191,9 @@ async function main() {
   console.log("  npm run start");
   
   rl.close();
+
+  deleteStartupScriptFile();
+  removeCommandFromPackageJson();
 }
 
 main().catch(err => {
