@@ -109,7 +109,7 @@ async function main() {
   const domainInput = (await askQuestion("2. Domain Name (kebab-case, e.g., weather-forecast): ")).trim();
   const serviceMethod = (await askQuestion("3. Service Method Name (camelCase, e.g., getForecast): ")).trim();
   const toolName = (await askQuestion("4. Tool Name (snake_case, e.g., get_forecast): ")).trim();
-  const clientMethodName = (await askQuestion("5. Domain Client Method Name (camelCase, e.g., fetchForecast): ")).trim();
+  const clientMethodName = (await askQuestion("5. Domain Client Method Name (http.client.ts, db.client.ts) (camelCase, e.g., fetchForecast): ")).trim();
   
   // Transform Inputs
   const domainDirName = domainInput.toLowerCase();
