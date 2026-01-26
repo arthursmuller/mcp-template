@@ -249,7 +249,7 @@ async function main() {
   // We need to update imports and the usage of the service
   replaceInFile('src/mcp/tools.ts', [
     // 1. Update Import Path: "../domain/domain-name/services/domain.js" -> "../[domainDirName]/services/[domainInput].service.js"
-    { search: /domain-name\/services\/domain\.js/g, replace: `${domainDirName}/services/${domainServiceFileName.replace('.ts', '.js')}` },
+    { search: /domain-name\/services\/domain\.service\.js/g, replace: `${domainDirName}/services/${domainServiceFileName.replace('.ts', '.js')}` },
     
     // 2. Update Import Variable: "import DomainService" -> "import [DomainServiceClassName]"
     { search: /import DomainService/g, replace: `import ${domainServiceClassName}` },
