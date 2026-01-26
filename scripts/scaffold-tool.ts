@@ -349,7 +349,7 @@ ${methodBody}
       // TODO: Define Zod schema based on ${requestDtoName}
       // param: z.string(),
     },
-    callback: buildTool(${selectedDomain.className}.${methodName})
+    callback: buildTool(${selectedDomain.className}.${methodName}).bind(${selectedDomain.className})),
   },`;
 
     // Regex to capture the tools object content and append the new tool

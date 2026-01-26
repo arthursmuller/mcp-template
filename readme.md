@@ -104,7 +104,7 @@ To add a new capability to this server, follow this 5-step process to maintain c
     * Wrap the service callback using `buildTool(DomainService.yourMethod)`. This wrapper automatically handles success/error JSON formatting.
 
 5.  **Enable the Tool:**
-    Add the tool definition to the `TOOLS_ENABLED` array in `src/env.ts`. This allows tools to be toggled via environment variables (e.g., `process.env.EXAMPLE_TOOL === "true"`).
+    Add the tool definition to the `TOOLS_ENABLED` array in `src/env.ts`. This allows tools to be toggled via environment variables (e.g., `process.env.EXAMPLE_TOOL === "false"`).
 
 ### How to Modify API Client
 If authentication or base URLs need changing:

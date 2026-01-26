@@ -25,6 +25,19 @@ class HttpClient {
       throw error;
     }
   }
+   async get<T = any>(path: string, config?: AxiosRequestConfig): Promise<T> {
+    try {
+      const headers = {
+        ...(config?.headers || {}),
+      };
+      
+      const response = await this.client.get<T>(path, { ...config, headers });
+      return response.data;
+    } catch (error) {
+      console.error("HTTP GET failed:", error);
+      throw error;
+    }
+  }
 }
 
 export default HttpClient;
