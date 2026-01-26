@@ -257,7 +257,10 @@ async function main() {
     // 3. Update Usage in Callback: "DomainService.example" -> "[DomainServiceClassName].[method]"
     { search: /DomainService\.example/g, replace: `${domainServiceClassName}.${serviceMethod}` },
 
-    // 4. Update Tool Metadata Keys: toolMetadata.example_tool -> toolMetadata.[toolName]
+    // 4. Update usage in .bind(): ".bind(DomainService)" -> ".bind([DomainServiceClassName])"
+    { search: /\.bind\(DomainService\)/g, replace: `.bind(${domainServiceClassName})` },
+
+    // 5. Update Tool Metadata Keys: toolMetadata.example_tool -> toolMetadata.[toolName]
     { search: /toolMetadata\.example_tool/g, replace: `toolMetadata.${toolName}` }
   ]);
 
