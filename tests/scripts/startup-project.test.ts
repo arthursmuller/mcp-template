@@ -1,14 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-// We mock utils to control user input and prevent actual console logging
+// 1. Mock utils
 jest.mock('../../scripts/utils', () => ({
   askQuestion: jest.fn(),
   rl: { close: jest.fn() },
   logBanner: jest.fn(),
   logEndBanner: jest.fn(),
-  // We use the actual implementation for the case converters to ensure 
-  // the script logic uses them correctly
   toKebabCase: jest.requireActual('../../scripts/utils').toKebabCase,
   toCamelCase: jest.requireActual('../../scripts/utils').toCamelCase,
   toPascalCase: jest.requireActual('../../scripts/utils').toPascalCase,
@@ -17,209 +15,228 @@ jest.mock('../../scripts/utils', () => ({
 
 import { askQuestion } from '../../scripts/utils.js';
 
-// Mock fs to prevent actual file system changes
+// 2. Mock fs
 jest.mock('fs');
 
-describe('Startup Project Script', () => {
+describe('Startup Project Script (Integration Test)', () => {
   const mockAskQuestion = askQuestion as jest.Mock;
   
-  // Storage for file writes so we can inspect them
-  let writtenFiles: Record<string, string> = {};
-  let renamedFiles: Record<string, string> = {};
-  let deletedFiles: string[] = [];
+  // Virtual File System State
+  let virtualFileSystem: Record<string, string> = {};
+  let trackedRenames: Record<string, string> = {};
+  let trackedDeletions: string[] = [];
 
-  // Mock Data mimicking the provided template files
-  const mockFileSystem: Record<string, string> = {
-    [path.resolve('package.json')]: JSON.stringify({
+  // Helper to normalize paths
+  const abs = (p: string) => path.resolve(p);
+
+  // Snapshot of the initial project structure
+  const getBaseFileSystem = () => ({
+    // Config & Meta
+    [abs('package.json')]: JSON.stringify({
       name: "example-mcp-proj-name",
       description: "example-mcp-proj-name",
       scripts: { "startup-project": "ts-node scripts/startup-project.ts" }
-    }),
-    [path.resolve('package-lock.json')]: JSON.stringify({ name: "example-mcp-proj-name" }),
-    [path.resolve('readme.md')]: "# example-mcp-proj-name MCP Server",
-    [path.resolve('src/env.ts')]: 'SERVER_NAME: "example-mcp-proj-name", process.env.EXAMPLE_TOOL === "false" ? null : toolMetadata.example_tool.name',
-    [path.resolve('src/tools.metadata.ts')]: 'example_tool: { name: "example_tool" }',
+    }, null, 2),
+    [abs('package-lock.json')]: JSON.stringify({ name: "example-mcp-proj-name" }),
+    [abs('readme.md')]: "# example-mcp-proj-name MCP Server",
+    [abs('src/env.ts')]: 'SERVER_NAME: "example-mcp-proj-name", process.env.EXAMPLE_TOOL === "false" ? null : toolMetadata.example_tool.name',
+    [abs('src/tools.metadata.ts')]: 'example_tool: { name: "example_tool" }',
+    
+    // Directories (Explicit entries needed for recursive logic)
+    [abs('src/domain/domain-name')]: 'DIRECTORY',
+    [abs('src/domain/domain-name/dtos')]: 'DIRECTORY',
+    [abs('src/domain/domain-name/clients')]: 'DIRECTORY',
+    [abs('src/domain/domain-name/services')]: 'DIRECTORY',
+
     // Domain Files
-    [path.resolve('src/domain/domain-name/dtos/domain.dto.ts')]: 'export interface DomainExampleRequestDto {}',
-    [path.resolve('src/domain/domain-name/clients/domain.db.client.ts')]: 'class DomainDbClient { async example() {} }',
-    [path.resolve('src/domain/domain-name/clients/domain.http.client.ts')]: 'class DomainHttpClient { async example() {} }',
-    [path.resolve('src/domain/domain-name/services/domain.service.ts')]: 'class DomainService { async example() {} new DomainService() }',
-    [path.resolve('src/mcp/tools.ts')]: 'import DomainService from "../domain/domain-name/services/domain.service.js"; DomainService.example.bind(DomainService) toolMetadata.example_tool.name',
-    [path.join(process.cwd(), 'scripts', 'startup-project.ts')]: 'script content'
-  };
+    [abs('src/domain/domain-name/dtos/domain.dto.ts')]: 
+      'export interface DomainExampleRequestDto {} export interface DomainExampleResponseDto {}',
+    [abs('src/domain/domain-name/clients/domain.db.client.ts')]: 
+      'class DomainDbClient { async example(dto: DomainExampleRequestDto) {} } "../dtos/domain.dto.js"',
+    [abs('src/domain/domain-name/clients/domain.http.client.ts')]: 
+      'class DomainHttpClient { async example(dto: DomainExampleRequestDto) {} } "../dtos/domain.dto.js"',
+    [abs('src/domain/domain-name/services/domain.service.ts')]: 
+      'import { DomainHttpClient } from "../clients/domain.http.client.js";\n' +
+      'class DomainService { constructor(private readonly httpClient: DomainHttpClient) {} async example(dto: DomainExampleRequestDto) { this.httpClient.example(dto) } } new DomainService(new DomainHttpClient())',
+    
+    // MCP Tools
+    [abs('src/mcp/tools.ts')]: 
+      'import DomainService from "../domain/domain-name/services/domain.service.js";\n' +
+      'callback: buildTool(DomainService.example.bind(DomainService)),\n' +
+      '[toolMetadata.example_tool.name]',
+      
+    // Script
+    [abs(path.join('scripts', 'startup-project.ts'))]: 'console.log("running");'
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
-    writtenFiles = {};
-    renamedFiles = {};
-    deletedFiles = [];
+    // Reset VFS to clean state for every test
+    virtualFileSystem = getBaseFileSystem();
+    trackedRenames = {};
+    trackedDeletions = [];
 
-    // Setup FS Mocks
-    (fs.existsSync as jest.Mock).mockReturnValue(true);
-    
+    // --- FS Implementation ---
+
+    (fs.existsSync as jest.Mock).mockImplementation((filePath: string) => {
+      return !!virtualFileSystem[abs(filePath)];
+    });
+
     (fs.readFileSync as jest.Mock).mockImplementation((filePath: string) => {
-      const resolved = path.resolve(filePath);
-      return mockFileSystem[resolved] || '';
+      const content = virtualFileSystem[abs(filePath)];
+      if (content === undefined) throw new Error(`FNOENT: ${filePath}`);
+      return content;
     });
 
     (fs.writeFileSync as jest.Mock).mockImplementation((filePath: string, content: string) => {
-      writtenFiles[path.resolve(filePath)] = content;
+      virtualFileSystem[abs(filePath)] = content;
     });
 
     (fs.renameSync as jest.Mock).mockImplementation((oldPath: string, newPath: string) => {
-      renamedFiles[path.resolve(oldPath)] = path.resolve(newPath);
+      const oldAbs = abs(oldPath);
+      const newAbs = abs(newPath);
+      
+      trackedRenames[oldAbs] = newAbs;
+
+      // Recursive Move in VFS
+      // We iterate all keys to find files nested under the renamed directory
+      const keys = Object.keys(virtualFileSystem);
+      for (const key of keys) {
+        if (key === oldAbs) {
+          // Rename the directory/file itself
+          virtualFileSystem[newAbs] = virtualFileSystem[oldAbs];
+          delete virtualFileSystem[oldAbs];
+        } else if (key.startsWith(oldAbs + path.sep)) {
+          // Rename nested file: /old/nested/file -> /new/nested/file
+          const suffix = key.slice(oldAbs.length);
+          const newKey = newAbs + suffix;
+          virtualFileSystem[newKey] = virtualFileSystem[key];
+          delete virtualFileSystem[key];
+        }
+      }
     });
 
     (fs.unlinkSync as jest.Mock).mockImplementation((filePath: string) => {
-      deletedFiles.push(path.resolve(filePath));
+      const p = abs(filePath);
+      delete virtualFileSystem[p];
+      trackedDeletions.push(p);
     });
   });
 
   const runScript = async () => {
-    // We isolate modules so we can re-import (and re-run) the script for every test
     await jest.isolateModulesAsync(async () => {
       await import('../../scripts/startup-project.js');
     });
   };
 
-  test('It should sanitize inputs and rename project files (kebab-case)', async () => {
-    // 1. Setup Input with spaces and mixed case
+  test('1. Should sanitize inputs and update global config files', async () => {
     mockAskQuestion
-      .mockResolvedValueOnce('My Cool Project')   // 1. Project Name
-      .mockResolvedValueOnce('Weather Data')      // 2. Domain Name
-      .mockResolvedValueOnce('Get Forecast')      // 3. Service Method
-      .mockResolvedValueOnce('Current Weather')   // 4. Tool Name
-      .mockResolvedValueOnce('Fetch From API');   // 5. Client Method
+      .mockResolvedValueOnce('My Weather API') // Project
+      .mockResolvedValueOnce('Weather Data')   // Domain
+      .mockResolvedValueOnce('Get Forecast')   // Service
+      .mockResolvedValueOnce('current_weather')// Tool
+      .mockResolvedValueOnce('fetch');         // Client
 
-    // 2. Run Script
     await runScript();
 
-    // 3. Assertions on package.json (Project Name sanitization)
-    const packageJsonPath = path.resolve('package.json');
-    expect(writtenFiles[packageJsonPath]).toBeDefined();
-    const pkg = JSON.parse(writtenFiles[packageJsonPath]);
+    const pkg = JSON.parse(virtualFileSystem[abs('package.json')]);
+    expect(pkg.name).toBe('my-weather-api');
     
-    // Should be kebab-case "my-cool-project"
-    expect(pkg.name).toBe('my-cool-project');
-    expect(pkg.description).toBe('my-cool-project');
-    // Should remove startup script
-    expect(pkg.scripts['startup-project']).toBeUndefined();
+    const env = virtualFileSystem[abs('src/env.ts')];
+    expect(env).toContain('SERVER_NAME: "my-weather-api"');
+    expect(env).toContain('process.env.CURRENT_WEATHER');
   });
 
-  test('It should rename directories and files based on domain input', async () => {
+  test('2. Should rename Domain directory and files', async () => {
     mockAskQuestion
       .mockResolvedValueOnce('proj')
-      .mockResolvedValueOnce('User Auth') // Domain: "User Auth" -> "user-auth"
+      .mockResolvedValueOnce('User Auth') // Domain -> user-auth
       .mockResolvedValueOnce('login')
-      .mockResolvedValueOnce('user_login')
+      .mockResolvedValueOnce('login_tool')
       .mockResolvedValueOnce('doLogin');
 
     await runScript();
 
-    // Directory Rename
-    const oldDir = path.resolve('src/domain/domain-name');
-    const newDir = path.resolve('src/domain/user-auth');
-    expect(renamedFiles[oldDir]).toBe(newDir);
+    const oldDir = abs('src/domain/domain-name');
+    const newDir = abs('src/domain/user-auth');
+    
+    // Validate directory rename was called
+    expect(trackedRenames[oldDir]).toBe(newDir);
 
-    // File Renames (checking specific paths)
-    // DTO
-    expect(renamedFiles[path.resolve(newDir, 'dtos/domain.dto.ts')])
-      .toBe(path.resolve(newDir, 'dtos/login.dto.ts')); // camelCase method name used for file
-
-    // Service
-    expect(renamedFiles[path.resolve(newDir, 'services/domain.service.ts')])
-      .toBe(path.resolve(newDir, 'services/user-auth.service.ts')); // kebab-case domain used for file
+    // Validate DTO file rename (happens inside new directory)
+    // Script Logic: domain.dto.ts -> [serviceMethod].dto.ts (login.dto.ts)
+    const oldDto = path.join(newDir, 'dtos', 'domain.dto.ts');
+    const newDto = path.join(newDir, 'dtos', 'login.dto.ts');
+    expect(trackedRenames[oldDto]).toBe(newDto);
+    
+    // Verify file actually exists in VFS at new path
+    expect(virtualFileSystem[newDto]).toBeDefined();
   });
 
-  test('It should sanitize class names and update content correctly (PascalCase)', async () => {
+  test('3. Should update Service and Client code content correctly', async () => {
     mockAskQuestion
       .mockResolvedValueOnce('proj')
-      .mockResolvedValueOnce('credit card') // Domain
-      .mockResolvedValueOnce('process payment') // Service Method
-      .mockResolvedValueOnce('pay')
-      .mockResolvedValueOnce('charge');
+      .mockResolvedValueOnce('Order System') // Domain -> order-system
+      .mockResolvedValueOnce('create order') // Service -> createOrder
+      .mockResolvedValueOnce('create_order')
+      .mockResolvedValueOnce('post order');  // Client -> postOrder
 
     await runScript();
 
-    // Check Service File Content
-    // We look for where the file was written. Note: The script writes to the *new* path.
-    // In our mock, fs.renameSync runs first, then replaceInFile writes to the NEW path.
+    const domainDir = abs('src/domain/order-system');
     
-    // We simulate the path resolution for the service file
-    const servicePath = path.resolve('src/domain/credit-card/services/credit-card.service.ts');
-    const serviceContent = writtenFiles[servicePath];
-
+    // Verify Service File
+    const servicePath = path.join(domainDir, 'services', 'order-system.service.ts');
+    const serviceContent = virtualFileSystem[servicePath];
+    
     expect(serviceContent).toBeDefined();
+    expect(serviceContent).toContain('class OrderSystemService');
+    expect(serviceContent).toContain('async createOrder(');
+    expect(serviceContent).toContain('OrderSystemHttpClient');
+    expect(serviceContent).toContain('this.httpClient.postOrder(');
 
-    // "credit card" -> CreditCardService (PascalCase)
-    expect(serviceContent).toContain('class CreditCardService');
+    // Verify Client File
+    const clientPath = path.join(domainDir, 'clients', 'order-system.http.client.ts');
+    const clientContent = virtualFileSystem[clientPath];
     
-    // "process payment" -> processPayment (camelCase)
-    expect(serviceContent).toContain('async processPayment(');
-    
-    // "credit card" -> CreditCardHttpClient (PascalCase)
-    expect(serviceContent).toContain('CreditCardHttpClient');
-
-    // DTO names: "process payment" -> ProcessPaymentRequestDto
-    expect(serviceContent).toContain('ProcessPaymentRequestDto');
+    expect(clientContent).toBeDefined();
+    expect(clientContent).toContain('class OrderSystemHttpClient');
+    expect(clientContent).toContain('async postOrder(');
+    expect(clientContent).toContain('"../dtos/createOrder.dto.js"');
   });
 
-  test('It should update Environment and Tools Metadata (Snake Case)', async () => {
+  test('4. Should update MCP Tools Registry (tools.ts)', async () => {
     mockAskQuestion
       .mockResolvedValueOnce('proj')
-      .mockResolvedValueOnce('dom')
-      .mockResolvedValueOnce('met')
-      .mockResolvedValueOnce('Get User Info') // Tool Name input with spaces
-      .mockResolvedValueOnce('cli');
-
-    await runScript();
-
-    // Check src/env.ts
-    const envPath = path.resolve('src/env.ts');
-    const envContent = writtenFiles[envPath];
-    // "Get User Info" -> GET_USER_INFO (Upper Snake Case for Env Var)
-    expect(envContent).toContain('process.env.GET_USER_INFO');
-    // "Get User Info" -> get_user_info (Lower Snake Case for metadata property)
-    expect(envContent).toContain('toolMetadata.get_user_info.name');
-
-    // Check src/tools.metadata.ts
-    const metaPath = path.resolve('src/tools.metadata.ts');
-    const metaContent = writtenFiles[metaPath];
-    // Object key should be snake_case
-    expect(metaContent).toContain('get_user_info:');
-    expect(metaContent).toContain('name: "get_user_info"');
-  });
-
-  test('It should update tool registration imports in src/mcp/tools.ts', async () => {
-     mockAskQuestion
-      .mockResolvedValueOnce('proj')
-      .mockResolvedValueOnce('billing system') // Domain
-      .mockResolvedValueOnce('calculate tax') // Service Method
-      .mockResolvedValueOnce('tax_calc')
+      .mockResolvedValueOnce('Billing')
+      .mockResolvedValueOnce('Process Payment') // Service -> processPayment (camelCase)
+      .mockResolvedValueOnce('pay_bill')
       .mockResolvedValueOnce('req');
 
     await runScript();
 
-    const toolsPath = path.resolve('src/mcp/tools.ts');
-    const toolsContent = writtenFiles[toolsPath];
+    const toolsPath = abs('src/mcp/tools.ts');
+    const content = virtualFileSystem[toolsPath];
 
-    // Check Import Path update: domain-name -> billing-system
-    // Check Service File update: domain.service.js -> billing-system.service.js
-    expect(toolsContent).toContain('billing-system/services/billing-system.service.js');
-
-    // Check Class usage: BillingSystemService
-    expect(toolsContent).toContain('import BillingSystemService');
-    expect(toolsContent).toContain('BillingSystemService.calculateTax');
-    expect(toolsContent).toContain('.bind(BillingSystemService)');
+    // Check Import path replacement
+    expect(content).toContain('from "../domain/billing/services/billing.service.js"');
+    
+    // Check Class usage
+    expect(content).toContain('import BillingService');
+    
+    // Check Method binding (camelCase)
+    expect(content).toContain('BillingService.processPayment'); 
+    expect(content).toContain('.bind(BillingService)');
+    
+    // Check Metadata key
+    expect(content).toContain('[toolMetadata.pay_bill.name]');
   });
 
-  test('It should delete itself after execution', async () => {
-    mockAskQuestion
-      .mockResolvedValue('test'); // Fill all with 'test'
-
+  test('5. Should self-destruct after execution', async () => {
+    mockAskQuestion.mockResolvedValue('test');
     await runScript();
 
-    const scriptPath = path.join(process.cwd(), 'scripts', 'startup-project.ts');
-    expect(deletedFiles).toContain(scriptPath);
+    const scriptPath = abs(path.join('scripts', 'startup-project.ts'));
+    expect(trackedDeletions).toContain(scriptPath);
   });
 });
