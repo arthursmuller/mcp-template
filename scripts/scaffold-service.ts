@@ -194,13 +194,14 @@ export class ${dbClient.className} {
     const clientPath = path.join(clientsDir, httpClient.fileName);
     const content = `
 import HttpClient from "../../../api/client.js";
+import env from "../../../env.js";
 import { getHeaders } from "../utils/api.js";
 
 export class ${httpClient.className} {
   private readonly httpClient: HttpClient;
 
   constructor() {
-    this.httpClient = new HttpClient(getHeaders());
+    this.httpClient = new HttpClient(env.API.Url, getHeaders())
   }
   
   // TODO: Implement HTTP logic
