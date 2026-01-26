@@ -1,19 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, rl } from './utils.js';
+import { askQuestion, rl, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from './utils.js';
 
-// --- Helpers ---
-const toPascalCase = (str: string): string => {
-  return str.split(/[-_.]/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
-};
-
-// --- Main Script ---
 async function main() {
-  console.log("=====================================");
-  console.log("     MCP Domain Generator            ");
-  console.log("=====================================\n");
+  logBanner("MCP Domain Generator");
 
   // 1. Domain Name
   const domainNameRaw = (await askQuestion("1. Domain Name (kebab-case, e.g., weather-data): ")).trim();
@@ -21,7 +11,7 @@ async function main() {
     console.error("Domain name is required.");
     process.exit(1);
   }
-  const domainDirName = domainNameRaw.toLowerCase();
+  const domainDirName = toKebabCase(domainNameRaw);
   const domainBasePath = path.join('src/domain', domainDirName);
 
   if (fs.existsSync(domainBasePath)) {
@@ -38,14 +28,15 @@ async function main() {
   const addDb = addDbRaw === 'y' || addDbRaw === 'yes';
 
   // 4. Client Method Name (if applicable)
-  let clientMethodName = '';
+  let clientMethodName = 'fetchData';
   if (addHttp || addDb) {
-    clientMethodName = (await askQuestion("4. Client Method Name (camelCase, e.g., fetchData): ")).trim();
-    if (!clientMethodName) clientMethodName = 'fetchData'; // default
+    const rawMethod = (await askQuestion("4. Client Method Name (camelCase, e.g., fetchData): ")).trim();
+    if (rawMethod) clientMethodName = toCamelCase(rawMethod);
   }
 
   // 5. Service Method Name
-  const serviceMethodName = (await askQuestion("5. Service Method Name (camelCase, e.g., getWeatherData): ")).trim() || 'getData';
+  const serviceMethodRaw = (await askQuestion("5. Service Method Name (camelCase, e.g., getWeatherData): ")).trim();
+  const serviceMethodName = serviceMethodRaw ? toCamelCase(serviceMethodRaw) : 'getData';
 
   console.log("\n[INFO] Generating domain structure...\n");
 
@@ -62,7 +53,7 @@ async function main() {
   if (addHttp) fs.mkdirSync(utilsDir);
 
   // --- Names & Paths ---
-  const domainPascal = toPascalCase(domainNameRaw);
+  const domainPascal = toPascalCase(domainDirName);
   
   // DTOs
   const dtoFileName = `${serviceMethodName}.dto.ts`;
@@ -206,9 +197,8 @@ export default new ${serviceClassName}(${initParams.join(', ')});
   fs.writeFileSync(path.join(servicesDir, serviceFileName), serviceContent.trim());
   console.log(`[CREATE] Service: services/${serviceFileName}`);
 
-  console.log("\n=====================================");
-  console.log("   Domain Created Successfully! 🚀");
-  console.log("=====================================");
+  logEndBanner("Domain");
+  
   console.log(`Don't forget to:`);
   console.log(`1. Run 'npm run new-tool' to expose this service as an MCP tool.`);
   

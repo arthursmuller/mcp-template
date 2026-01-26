@@ -1,14 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getDomainsServicesWithDomainMap, rl } from './utils.js';
-
-// --- Helpers ---
-const toPascalCase = (str: string): string => {
-  return str.split(/[-_.]/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
-};
-
+import { logBanner, askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase, toKebabCase, toCamelCase, logEndBanner } from './utils.js';
 
 interface ClientInfo {
   fileName: string;
@@ -41,17 +33,25 @@ const getClients = (domainDir: string, type: 'db' | 'http'): ClientInfo[] => {
   return clients;
 };
 
-
-// --- Main Script ---
 async function main() {
-  console.log("=====================================");
-  console.log("     MCP Service Generator           ");
-  console.log("=====================================\n");
+  logBanner("MCP Service Generator")
 
   // 1. Select distinct Domains
-  const domains = Array.from(
-    new Map(getDomainsServicesWithDomainMap().map((item) => [item.dirName, item])).values()
-  );
+  // getDomainsServicesWithDomainMap returns individual service files. We group them by domain directory.
+  const allServices = getDomainsServicesWithDomainMap();
+  const domainsMap = new Map<string, { dirName: string, rootPath: string }>();
+  
+  for (const s of allServices) {
+    // s.absolutePath is .../src/domain/<domain>/services/<service>.ts
+    // We want .../src/domain/<domain>
+    const domainRoot = path.resolve(path.dirname(s.absolutePath), '..');
+    if (!domainsMap.has(s.dirName)) {
+      domainsMap.set(s.dirName, { dirName: s.dirName, rootPath: domainRoot });
+    }
+  }
+
+  const domains = Array.from(domainsMap.values());
+
   if (domains.length === 0) {
     console.error("[mn] No domains found. Please run startup-project first or create a domain manually.");
     process.exit(1);
@@ -68,18 +68,23 @@ async function main() {
     process.exit(1);
   }
 
+  const domainRoot = selectedDomain.rootPath;
+
   // 2. Service Details
   const serviceNameRaw = (await askQuestion("Service Name (kebab-case, e.g., user-profile): ")).trim();
-  const serviceClassName = `${toPascalCase(serviceNameRaw)}Service`;
-  const serviceFileName = `${serviceNameRaw.toLowerCase()}.service.ts`;
+  const serviceNameKebab = toKebabCase(serviceNameRaw);
+  const serviceClassName = `${toPascalCase(serviceNameKebab)}Service`;
+  const serviceFileName = `${serviceNameKebab}.service.ts`;
 
   // 3. Method & DTO
-  const methodName = (await askQuestion("Add a method name? (camelCase, e.g., getUser, or leave empty): ")).trim();
+  const methodNameRaw = (await askQuestion("Add a method name? (camelCase, e.g., getUser, or leave empty): ")).trim();
+  let methodName = '';
   let requestDtoName = '';
   let responseDtoName = '';
   let dtoFileName = '';
 
-  if (methodName) {
+  if (methodNameRaw) {
+    methodName = toCamelCase(methodNameRaw);
     const methodPascal = toPascalCase(methodName);
     requestDtoName = `${methodPascal}RequestDto`;
     responseDtoName = `${methodPascal}ResponseDto`;
@@ -90,7 +95,7 @@ async function main() {
   
   // --- DB Client ---
   let dbClient: ClientInfo | null = null;
-  const existingDbClients = getClients(selectedDomain.absolutePath, 'db');
+  const existingDbClients = getClients(domainRoot, 'db');
   
   console.log("\n--- DB Client Dependency ---");
   console.log("  [1] None");
@@ -100,9 +105,10 @@ async function main() {
   const dbChoice = (await askQuestion("Select option: ")).trim();
   
   if (dbChoice === '2') {
-    const name = (await askQuestion("New DB Client Name (kebab-case, e.g., user): ")).trim();
-    const className = `${toPascalCase(name)}DbClient`;
-    const fileName = `${name.toLowerCase()}.db.client.ts`;
+    const nameRaw = (await askQuestion("New DB Client Name (kebab-case, e.g., user): ")).trim();
+    const nameKebab = toKebabCase(nameRaw);
+    const className = `${toPascalCase(nameKebab)}DbClient`;
+    const fileName = `${nameKebab}.db.client.ts`;
     dbClient = {
       fileName,
       className,
@@ -115,7 +121,7 @@ async function main() {
 
   // --- HTTP Client ---
   let httpClient: ClientInfo | null = null;
-  const existingHttpClients = getClients(selectedDomain.absolutePath, 'http');
+  const existingHttpClients = getClients(domainRoot, 'http');
   
   console.log("\n--- HTTP Client Dependency ---");
   console.log("  [1] None");
@@ -125,9 +131,10 @@ async function main() {
   const httpChoice = (await askQuestion("Select option: ")).trim();
 
   if (httpChoice === '2') {
-    const name = (await askQuestion("New HTTP Client Name (kebab-case, e.g., weather): ")).trim();
-    const className = `${toPascalCase(name)}HttpClient`;
-    const fileName = `${name.toLowerCase()}.http.client.ts`;
+    const nameRaw = (await askQuestion("New HTTP Client Name (kebab-case, e.g., weather): ")).trim();
+    const nameKebab = toKebabCase(nameRaw);
+    const className = `${toPascalCase(nameKebab)}HttpClient`;
+    const fileName = `${nameKebab}.http.client.ts`;
     httpClient = {
       fileName,
       className,
@@ -144,7 +151,7 @@ async function main() {
 
   // 1. Create DTO if requested
   if (methodName && dtoFileName) {
-    const dtoPath = path.join(selectedDomain.absolutePath, 'dtos', dtoFileName);
+    const dtoPath = path.join(domainRoot, 'dtos', dtoFileName);
     const dtoContent = `export interface ${requestDtoName} {\n  // TODO: Add properties\n}\n\nexport interface ${responseDtoName} {\n  // TODO: Add properties\n}\n`;
     
     if (!fs.existsSync(path.dirname(dtoPath))) fs.mkdirSync(path.dirname(dtoPath), { recursive: true });
@@ -153,7 +160,7 @@ async function main() {
   }
 
   // 2. Create Clients if New
-  const clientsDir = path.join(selectedDomain.absolutePath, 'clients');
+  const clientsDir = path.join(domainRoot, 'clients');
   if (!fs.existsSync(clientsDir)) fs.mkdirSync(clientsDir, { recursive: true });
 
   if (dbClient && dbClient.isNew) {
@@ -189,7 +196,7 @@ export class ${httpClient.className} {
   }
 
   // 3. Create Service
-  const servicesDir = path.join(selectedDomain.absolutePath, 'services');
+  const servicesDir = path.join(domainRoot, 'services');
   if (!fs.existsSync(servicesDir)) fs.mkdirSync(servicesDir, { recursive: true });
 
   const servicePath = path.join(servicesDir, serviceFileName);
@@ -235,9 +242,8 @@ export default new ${serviceClassName}(${newParams.join(', ')});
   fs.writeFileSync(servicePath, serviceContent.trim());
   console.log(`[CREATE] Service: ${servicePath}`);
 
-  console.log("\n=====================================");
-  console.log("   Service Created Successfully! 🚀");
-  console.log("=====================================");
+  logEndBanner("Service");
+  
   rl.close();
 }
 

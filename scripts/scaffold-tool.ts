@@ -1,12 +1,23 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase } from './utils.js';
+import { askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase, toCamelCase, toSnakeCase, logBanner, logEndBanner, DomainInfo } from './utils.js';
 
 interface ClientInfo {
   fileName: string;
   className: string;
   absolutePath: string;
 }
+
+const endMessage = (selectedDomain: DomainInfo, selectedHttpClient: ClientInfo | null, selectedDbClient: ClientInfo | null, dtoFile: string) => {
+  logEndBanner("Tool");
+  console.log(`Don't forget to:`);
+  console.log(`1. Implement the logic in ${selectedDomain.absolutePath}`);
+  if (selectedHttpClient) console.log(`2. Implement client logic in ${selectedHttpClient.fileName}`);
+  if (selectedDbClient) console.log(`3. Implement client logic in ${selectedDbClient.fileName}`);
+  console.log(`4. Define properties in the new DTO file: ${dtoFile}`);
+  console.log(`5. Define the Zod schema in src/mcp/tools.ts`);
+}
+
 
 const getClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[] => {
   const clientsDir = path.resolve('src/domain', domainDirName, 'clients');
@@ -51,11 +62,8 @@ const injectIntoFile = (filePath: string, injector: (content: string) => string)
   }
 };
 
-// --- Main Script ---
 async function main() {
-  console.log("=====================================");
-  console.log("      MCP New Tool Generator         ");
-  console.log("=====================================\n");
+  logBanner("MCP New Tool Generator");
 
   // 1. Gather Data
   const domains = getDomainsServicesWithDomainMap();
@@ -77,8 +85,12 @@ async function main() {
     process.exit(1);
   }
 
-  const methodName = (await askQuestion("New Service Method Name (camelCase, e.g., getWeather): ")).trim();
-  const toolName = (await askQuestion("Tool Name (snake_case, e.g., get_weather): ")).trim();
+  const methodNameRaw = (await askQuestion("New Service Method Name (camelCase, e.g., getWeather): ")).trim();
+  const methodName = toCamelCase(methodNameRaw);
+  
+  const toolNameRaw = (await askQuestion("Tool Name (snake_case, e.g., get_weather): ")).trim();
+  const toolName = toSnakeCase(toolNameRaw);
+
   const toolDescription = (await askQuestion("Tool Description: ")).trim();
 
   // Derived Names
@@ -107,7 +119,8 @@ async function main() {
       }
 
       if (selectedHttpClient) {
-        httpClientMethodName = (await askQuestion(`HTTP Client Method Name (default: ${methodName}): `)).trim() || methodName;
+        const methodRaw = (await askQuestion(`HTTP Client Method Name (default: ${methodName}): `)).trim();
+        httpClientMethodName = methodRaw ? toCamelCase(methodRaw) : methodName;
       }
     }
   }
@@ -131,7 +144,8 @@ async function main() {
       }
 
       if (selectedDbClient) {
-        dbClientMethodName = (await askQuestion(`DB Client Method Name (default: ${methodName}): `)).trim() || methodName;
+        const methodRaw = (await askQuestion(`DB Client Method Name (default: ${methodName}): `)).trim();
+        dbClientMethodName = methodRaw ? toCamelCase(methodRaw) : methodName;
       }
     }
   }
@@ -303,15 +317,7 @@ ${methodBody}
     return newContent;
   });
 
-  console.log("\n=====================================");
-  console.log("   Tool Created Successfully! 🚀");
-  console.log("=====================================");
-  console.log(`Don't forget to:`);
-  console.log(`1. Implement the logic in ${selectedDomain.absolutePath}`);
-  if (selectedHttpClient) console.log(`2. Implement client logic in ${selectedHttpClient.fileName}`);
-  if (selectedDbClient) console.log(`3. Implement client logic in ${selectedDbClient.fileName}`);
-  console.log(`4. Define properties in the new DTO file: ${dtoFile}`);
-  console.log(`5. Define the Zod schema in src/mcp/tools.ts`);
+  endMessage(selectedDomain, selectedHttpClient, selectedDbClient, dtoFile);
   
   rl.close();
 }
@@ -321,3 +327,4 @@ main().catch(err => {
   rl.close();
   process.exit(1);
 });
+

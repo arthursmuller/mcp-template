@@ -1,42 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getDomainsServicesWithDomainMap, rl } from './utils.js';
+import { askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from './utils.js';
 
-// --- Helpers ---
-const toPascalCase = (str: string): string => {
-  return str.split(/[-_.]/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
-};
-
-const ensureUtilsApi = (domainPath: string) => {
-  const utilsDir = path.join(domainPath, 'utils');
-  const apiFile = path.join(utilsDir, 'api.ts');
-
-  if (!fs.existsSync(utilsDir)) {
-    fs.mkdirSync(utilsDir, { recursive: true });
-  }
-
-  if (!fs.existsSync(apiFile)) {
-    const content = `
-import env from "../../../env.js";
-
-export function getHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  // headers["Authorization"] = env.API.headers.ApiKey;
-  return headers;
-}
-`;
-    fs.writeFileSync(apiFile, content.trim());
-    console.log(`[INFO] Created missing utils/api.ts for HTTP client.`);
-  }
-};
-
-// --- Main Script ---
 async function main() {
-  console.log("=====================================");
-  console.log("     MCP Client Generator            ");
-  console.log("=====================================\n");
+  logBanner("MCP Client Generator");  
 
   // 1. List Domains
   const domains = Array.from(
@@ -81,14 +48,15 @@ async function main() {
     console.error("Client name is required.");
     process.exit(1);
   }
+  const clientName = toKebabCase(nameRaw);
 
   // 4. Method Name (Optional)
   const defaultMethod = isHttp ? 'fetchData' : 'getData';
   const methodRaw = (await askQuestion(`Method Name (Hit enter to skip) (camelCase, default: ${defaultMethod}): `)).trim();
-  const methodName = methodRaw || defaultMethod;
+  const methodName = methodRaw ? toCamelCase(methodRaw) : defaultMethod;
 
-  const classNamePrefix = toPascalCase(nameRaw);
-  const fileNamePrefix = nameRaw.toLowerCase();
+  const classNamePrefix = toPascalCase(clientName);
+  const fileNamePrefix = clientName; // already kebab-case
   
   const clientsDir = path.join(selectedDomain.absolutePath, 'clients');
   if (!fs.existsSync(clientsDir)) {
@@ -96,6 +64,29 @@ async function main() {
   }
 
   // 5. Generate Files
+  const ensureUtilsApi = (domainPath: string) => {
+    const utilsDir = path.join(domainPath, 'utils');
+    const apiFile = path.join(utilsDir, 'api.ts');
+  
+    if (!fs.existsSync(utilsDir)) {
+      fs.mkdirSync(utilsDir, { recursive: true });
+    }
+  
+    if (!fs.existsSync(apiFile)) {
+      const content = `
+import env from "../../../env.js";
+
+export function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  // headers["Authorization"] = env.API.headers.ApiKey;
+  return headers;
+}
+`;
+      fs.writeFileSync(apiFile, content.trim());
+      console.log(`[INFO] Created missing utils/api.ts for HTTP client.`);
+    }
+  };
+
   if (isHttp) {
     // Ensure utils exist for HTTP
     ensureUtilsApi(selectedDomain.absolutePath);
@@ -142,9 +133,7 @@ export class ${className} {
     console.log(`\n[CREATE] DB Client: ${fullPath}`);
   }
 
-  console.log("\n=====================================");
-  console.log("   Client Created Successfully! 🚀");
-  console.log("=====================================");
+  logEndBanner("Client");
   
   rl.close();
 }
@@ -154,3 +143,4 @@ main().catch(err => {
   rl.close();
   process.exit(1);
 });
+

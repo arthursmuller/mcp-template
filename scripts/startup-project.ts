@@ -1,6 +1,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, toKebabCase, toCamelCase, toSnakeCase, toPascalCase, rl } from './utils.js';
+import { logBanner, askQuestion, toKebabCase, toCamelCase, toSnakeCase, toPascalCase, rl, logEndBanner } from './utils.js';
+
+const endMessage = (projectName: string, domainDirName: string, domainServiceFileName: string, toolName: string) => {
+  logEndBanner("Configuration");
+  console.log(`1. Project renamed to: ${projectName}`);
+  console.log(`2. Domain setup: src/domain/${domainDirName}/services/${domainServiceFileName}`);
+  console.log(`3. Clients setup: src/domain/${domainDirName}/clients/`);
+  console.log(`4. Tool configured: ${toolName}`);
+  console.log("\nNext Steps:");
+  console.log("  npm install");
+  console.log("  npm run build");
+  console.log("  npm run start");
+}
 
 const replaceInFile = (filePath: string, replacements: { search: RegExp | string, replace: string }[]) => {
   const fullPath = path.resolve(filePath);
@@ -79,11 +91,8 @@ const deleteStartupScriptFile = () => {
   }
 }
 
-// --- Main Script ---
 async function main() {
-  console.log("=====================================");
-  console.log("   MCP Template Initialization CLI   ");
-  console.log("=====================================\n");
+  logBanner("MCP Template Initialization CLI");
 
   // 1. Collect Inputs
   const projectNameRaw = (await askQuestion("1. Project Name (kebab-case, e.g., my-weather-mcp): ")).trim();
@@ -259,17 +268,8 @@ async function main() {
     { search: /toolMetadata\.example_tool/g, replace: `toolMetadata.${toolName}` }
   ]);
 
-  console.log("\n=====================================");
-  console.log("   Configuration Complete! 🚀");
-  console.log("=====================================");
-  console.log(`1. Project renamed to: ${projectName}`);
-  console.log(`2. Domain setup: src/domain/${domainDirName}/services/${domainServiceFileName}`);
-  console.log(`3. Clients setup: src/domain/${domainDirName}/clients/`);
-  console.log(`4. Tool configured: ${toolName}`);
-  console.log("\nNext Steps:");
-  console.log("  npm install");
-  console.log("  npm run build");
-  console.log("  npm run start");
+
+  endMessage(projectName, domainDirName, domainServiceFileName, toolName);
   
   rl.close();
 
@@ -282,3 +282,4 @@ main().catch(err => {
   rl.close();
   process.exit(1);
 });
+

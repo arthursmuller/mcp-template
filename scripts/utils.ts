@@ -11,6 +11,21 @@ export const askQuestion = (query: string): Promise<string> => {
   return new Promise((resolve) => rl.question(query, resolve));
 };
 
+
+export const logBanner =  (msg: string) => {
+  console.log("=====================================");
+  console.log(`        ${msg}        `);
+  console.log("=====================================\n");
+}
+
+export const logEndBanner = (msg: string ) => {
+  console.log("\n=====================================");
+  console.log(`    ${msg} Created Successfully! 🚀    `);
+  console.log("=====================================");
+}
+
+
+
 // Split by space, hyphen, underscore, or dot
 export const splitWordsBySpaceHyphendUnderscoreOrDot = (str: string): string[] => {
   return str.trim().split(/[-_\s.]+/).filter(w => w.length > 0);
@@ -45,7 +60,7 @@ export const toSnakeCase = (str: string): string => {
 };
 
 
-interface DomainInfo {
+export interface DomainInfo {
   dirName: string;
   className: string;
   absolutePath: string;
