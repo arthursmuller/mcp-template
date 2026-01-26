@@ -13,10 +13,38 @@ const askQuestion = (query: string): Promise<string> => {
 };
 
 // --- Helpers ---
+
+// Split by space, hyphen, underscore, or dot
+const splitWords = (str: string): string[] => {
+  return str.trim().split(/[-_\s.]+/).filter(w => w.length > 0);
+};
+
 const toPascalCase = (str: string): string => {
-  return str.split(/[-_]/)
+  return splitWords(str)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join('');
+};
+
+const toCamelCase = (str: string): string => {
+  const words = splitWords(str);
+  return words
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+      return index === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join('');
+};
+
+const toKebabCase = (str: string): string => {
+  return splitWords(str)
+    .map(word => word.toLowerCase())
+    .join('-');
+};
+
+const toSnakeCase = (str: string): string => {
+  return splitWords(str)
+    .map(word => word.toLowerCase())
+    .join('_');
 };
 
 const replaceInFile = (filePath: string, replacements: { search: RegExp | string, replace: string }[]) => {
@@ -105,13 +133,27 @@ async function main() {
   console.log("=====================================\n");
 
   // 1. Collect Inputs
-  const projectName = (await askQuestion("1. Project Name (kebab-case, e.g., my-weather-mcp): ")).trim();
-  const domainInput = (await askQuestion("2. Domain Name (kebab-case, e.g., weather-forecast): ")).trim();
-  const serviceMethod = (await askQuestion("3. Service Method Name (camelCase, e.g., getForecast): ")).trim();
-  const toolName = (await askQuestion("4. Tool Name (snake_case, e.g., get_forecast): ")).trim();
-  const clientMethodName = (await askQuestion("5. Domain Client Method Name (http.client.ts, db.client.ts) (camelCase, e.g., fetchForecast): ")).trim();
+  const projectNameRaw = (await askQuestion("1. Project Name (kebab-case, e.g., my-weather-mcp): ")).trim();
+  const domainInputRaw = (await askQuestion("2. Domain Name (kebab-case, e.g., weather-forecast): ")).trim();
+  const serviceMethodRaw = (await askQuestion("3. Service Method Name (camelCase, e.g., getForecast): ")).trim();
+  const toolNameRaw = (await askQuestion("4. Tool Name (snake_case, e.g., get_forecast): ")).trim();
+  const clientMethodNameRaw = (await askQuestion("5. Domain Client Method Name (camelCase, e.g., fetchForecast): ")).trim();
   
-  // Transform Inputs
+  // Transform Inputs (Enforcing Naming Conventions)
+  const projectName = toKebabCase(projectNameRaw);
+  const domainInput = toKebabCase(domainInputRaw);
+  const serviceMethod = toCamelCase(serviceMethodRaw);
+  const toolName = toSnakeCase(toolNameRaw);
+  const clientMethodName = toCamelCase(clientMethodNameRaw);
+
+  console.log("\n[INFO] Configuration confirmed:");
+  console.log(`  Project: ${projectName}`);
+  console.log(`  Domain:  ${domainInput}`);
+  console.log(`  Service: ${serviceMethod}`);
+  console.log(`  Tool:    ${toolName}`);
+  console.log(`  Client:  ${clientMethodName}`);
+
+  // Derived Values
   const domainDirName = domainInput.toLowerCase();
   const domainPascalCase = toPascalCase(domainInput);
   const domainServiceClassName = `${domainPascalCase}Service`;
@@ -124,8 +166,8 @@ async function main() {
   const dbClientFileName = `${domainInput}.db.client.ts`;
   const httpClientFileName = `${domainInput}.http.client.ts`;
 
-  // DTO Names (Ensure pascal case from camel case input)
-  const serviceMethodPascal = serviceMethod.charAt(0).toUpperCase() + serviceMethod.slice(1);
+  // DTO Names
+  const serviceMethodPascal = toPascalCase(serviceMethod);
   const requestDto = `${serviceMethodPascal}RequestDto`;
   const responseDto = `${serviceMethodPascal}ResponseDto`;
   
@@ -138,7 +180,7 @@ async function main() {
     { search: /"description": "example-mcp-proj-name"/, replace: `"description": "${projectName}"` }
   ]);
   
-  // package-lock.json
+  //SB-lock.json
   replaceInFile('package-lock.json', [
     { search: /"name": "example-mcp-proj-name"/g, replace: `"name": "${projectName}"` }
   ]);
@@ -214,8 +256,8 @@ async function main() {
 
   // Update src/domain/[domainDirName]/services/domain.ts -> [domainInput].service.ts
   const servicesDir = path.join(newDomainPath, 'services');
-  const oldServiceFile = path.join(servicesDir, 'domain.service.ts'); // Current default file in template
-  const newServiceFile = path.join(servicesDir, domainServiceFileName); // New specific name
+  const oldServiceFile = path.join(servicesDir, 'domain.service.ts'); 
+  const newServiceFile = path.join(servicesDir, domainServiceFileName); 
 
   if (fs.existsSync(oldServiceFile)) {
     fs.renameSync(oldServiceFile, newServiceFile);
@@ -248,7 +290,7 @@ async function main() {
   // 5. Update MCP Tools Registration (src/mcp/tools.ts)
   // We need to update imports and the usage of the service
   replaceInFile('src/mcp/tools.ts', [
-    // 1. Update Import Path: "../domain/domain-name/services/domain.js" -> "../[domainDirName]/services/[domainInput].service.js"
+    // 1. Update Import Path: "../domain/domain-name/services/domain.service.js" -> "../[domainDirName]/services/[domainInput].service.js"
     { search: /domain-name\/services\/domain\.service\.js/g, replace: `${domainDirName}/services/${domainServiceFileName.replace('.ts', '.js')}` },
     
     // 2. Update Import Variable: "import DomainService" -> "import [DomainServiceClassName]"
