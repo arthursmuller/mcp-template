@@ -9,9 +9,9 @@ export class DomainHttpClient {
     this.httpClient = new HttpClient(env.API.Url, getHeaders())
   }
 
-  async example(exampleParam: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> {
+  async example(dto: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> {
     try {
-      const data = await this.httpClient.post<DomainExampleResponseDto>("/", { ...exampleParam });
+      const data = await this.httpClient.post<DomainExampleResponseDto>("/", { ...dto });
       return data;
     } catch (e) {
       console.error(`Failed to execute query: `, e);

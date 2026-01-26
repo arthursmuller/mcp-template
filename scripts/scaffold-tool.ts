@@ -1,27 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
-
-// --- Configuration ---
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const askQuestion = (query: string): Promise<string> => {
-  return new Promise((resolve) => rl.question(query, resolve));
-};
-
-// --- Helpers ---
-const toPascalCase = (str: string): string => {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-};
-
-interface DomainInfo {
-  dirName: string;
-  className: string;
-  absolutePath: string;
-}
+import { askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase } from './utils.js';
 
 interface ClientInfo {
   fileName: string;
@@ -29,57 +8,7 @@ interface ClientInfo {
   absolutePath: string;
 }
 
-const getDomains = (): DomainInfo[] => {
-  const domainsDir = path.resolve('src/domain');
-  if (!fs.existsSync(domainsDir)) return [];
-
-  const domains: DomainInfo[] = [];
-  const entries = fs.readdirSync(domainsDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      // Support new structure: src/domain/<name>/services/<file>.ts
-      const servicesDir = path.join(domainsDir, entry.name, 'services');
-      
-      if (fs.existsSync(servicesDir) && fs.statSync(servicesDir).isDirectory()) {
-        const files = fs.readdirSync(servicesDir);
-        for (const file of files) {
-          if (file.endsWith('.ts')) {
-             const servicePath = path.join(servicesDir, file);
-             const content = fs.readFileSync(servicePath, 'utf8');
-             // Regex to find "export class ClassName"
-             const match = content.match(/export\s+class\s+(\w+)/);
-             if (match && match[1]) {
-               domains.push({
-                 dirName: entry.name,
-                 className: match[1],
-                 absolutePath: servicePath
-               });
-               // Removed the 'break' here to allow listing multiple services per domain
-             }
-          }
-        }
-      } else {
-        // Fallback/Legacy check: src/domain/<name>/service.ts
-        const servicePath = path.join(domainsDir, entry.name, 'service.ts');
-        if (fs.existsSync(servicePath)) {
-          const content = fs.readFileSync(servicePath, 'utf8');
-          const match = content.match(/export\s+class\s+(\w+)/);
-          if (match && match[1]) {
-            domains.push({
-              dirName: entry.name,
-              className: match[1],
-              absolutePath: servicePath
-            });
-          }
-        }
-      }
-    }
-  }
-  return domains;
-};
-
-const  getdbClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[] => {
+const getClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[] => {
   const clientsDir = path.resolve('src/domain', domainDirName, 'clients');
   if (!fs.existsSync(clientsDir)) return [];
 
@@ -105,8 +34,6 @@ const  getdbClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[]
   return clients;
 };
 
-// --- File Manipulation Helpers ---
-
 // Helper to inject code into a file
 const injectIntoFile = (filePath: string, injector: (content: string) => string) => {
   const fullPath = path.resolve(filePath);
@@ -131,7 +58,7 @@ async function main() {
   console.log("=====================================\n");
 
   // 1. Gather Data
-  const domains = getDomains();
+  const domains = getDomainsServicesWithDomainMap();
   if (domains.length === 0) {
     console.error("[mn] No domains found in src/domain. Please create a domain first.");
     process.exit(1);
@@ -164,7 +91,7 @@ async function main() {
   // 1. HTTP Client
   let selectedHttpClient: ClientInfo | null = null;
   let httpClientMethodName: string = "";
-  const httpClients =  getdbClients(selectedDomain.dirName, 'http');
+  const httpClients =  getClients(selectedDomain.dirName, 'http');
   
   if (httpClients.length > 0) {
     const wantHttp = (await askQuestion("\nWant to add a http client method? (y/N): ")).trim().toLowerCase();
@@ -188,7 +115,7 @@ async function main() {
   // 2. DB Client
   let selectedDbClient: ClientInfo | null = null;
   let dbClientMethodName: string = "";
-  const ybClients = getdbClients(selectedDomain.dirName, 'db');
+  const ybClients = getClients(selectedDomain.dirName, 'db');
 
   if (ybClients.length > 0) {
     const wantDb = (await askQuestion("\nWant to add a db client method? (y/N): ")).trim().toLowerCase();

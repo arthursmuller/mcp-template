@@ -1,39 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
-
-// --- Configuration ---
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const askQuestion = (query: string): Promise<string> => {
-  return new Promise((resolve) => rl.question(query, resolve));
-};
+import { askQuestion, getDomainsServicesWithDomainMap, rl } from './utils.js';
 
 // --- Helpers ---
 const toPascalCase = (str: string): string => {
   return str.split(/[-_.]/)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join('');
-};
-
-interface DomainInfo {
-  name: string;
-  path: string;
-}
-
-const getDomains = (): DomainInfo[] => {
-  const domainsDir = path.resolve('src/domain');
-  if (!fs.existsSync(domainsDir)) return [];
-
-  return fs.readdirSync(domainsDir, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory())
-    .map(dirent => ({
-      name: dirent.name,
-      path: path.join(domainsDir, dirent.name)
-    }));
 };
 
 const ensureUtilsApi = (domainPath: string) => {
@@ -66,7 +39,9 @@ async function main() {
   console.log("=====================================\n");
 
   // 1. List Domains
-  const domains = getDomains();
+  const domains = Array.from(
+    new Map(getDomainsServicesWithDomainMap().map((item) => [item.dirName, item])).values()
+  );
 
   if (domains.length === 0) {
     console.error("No domains found. Please run 'npm run new-domain'");
@@ -74,7 +49,7 @@ async function main() {
   }
 
   console.log("Available Domains:");
-  domains.forEach((d, i) => console.log(`  [${i + 1}] ${d.name}`));
+  domains.forEach((d, i) => console.log(`  [${i + 1}] ${d.dirName}`));
 
   const domainIdxRaw = await askQuestion("\nSelect Domain (number): ");
   const domainIdx = parseInt(domainIdxRaw.trim()) - 1;
@@ -115,7 +90,7 @@ async function main() {
   const classNamePrefix = toPascalCase(nameRaw);
   const fileNamePrefix = nameRaw.toLowerCase();
   
-  const clientsDir = path.join(selectedDomain.path, 'clients');
+  const clientsDir = path.join(selectedDomain.absolutePath, 'clients');
   if (!fs.existsSync(clientsDir)) {
     fs.mkdirSync(clientsDir, { recursive: true });
   }
@@ -123,7 +98,7 @@ async function main() {
   // 5. Generate Files
   if (isHttp) {
     // Ensure utils exist for HTTP
-    ensureUtilsApi(selectedDomain.path);
+    ensureUtilsApi(selectedDomain.absolutePath);
 
     const className = `${classNamePrefix}HttpClient`;
     const fileName = `${fileNamePrefix}.http.client.ts`;
@@ -140,9 +115,9 @@ export class ${className} {
     this.httpClient = new HttpClient(getHeaders());
   }
 
-  async ${methodName}(params: any): Promise<any> {
-    // TODO: Define DTOs for params and return type
-    // return this.httpClient.post("/", params);
+  async ${methodName}(dto: any): Promise<any> {
+    // TODO: Define DTOs for dto and return type
+    // return this.httpClient.post("/", dto);
     return null;
   }
 }

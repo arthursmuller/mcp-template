@@ -4,8 +4,8 @@ import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domai
 export class DomainService {
   constructor(private readonly httpClient: DomainHttpClient) { }
 
-  async example(exampleParam: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> {
-    const data = await this.httpClient.example(exampleParam);
+  async example(dto: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> {
+    const data = await this.httpClient.example(dto);
     return data;
   }
 }

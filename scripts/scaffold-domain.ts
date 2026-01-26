@@ -1,16 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
-
-// --- Configuration ---
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const askQuestion = (query: string): Promise<string> => {
-  return new Promise((resolve) => rl.question(query, resolve));
-};
+import { askQuestion, rl } from './utils.js';
 
 // --- Helpers ---
 const toPascalCase = (str: string): string => {
@@ -96,6 +86,7 @@ async function main() {
   const dtoContent = `
 export interface ${requestDtoName} {
   // TODO: Add request properties
+  data?: any;
 }
 
 export interface ${responseDtoName} {
@@ -134,13 +125,14 @@ export class ${httpClientClassName} {
   private readonly httpClient: HttpClient;
 
   constructor() {
+    // TODO: Implement correct api URL
     this.httpClient = new HttpClient(env.API.Url, getHeaders())
   }
 
-  async ${clientMethodName}(params: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${clientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
     try {
       // TODO: Configure path and method
-      const response = await this.httpClient.post<${responseDtoName}>("/", params);
+      const response = await this.httpClient.post<${responseDtoName}>("/", dto);
       return response;
     } catch (error) {
       console.error("[${httpClientClassName}] Error:", error);
@@ -159,7 +151,7 @@ export class ${httpClientClassName} {
 import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${serviceMethodName}.dto.js";
 
 export class ${dbClientClassName} {
-  async ${clientMethodName}(params: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${clientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
     // TODO: Implement database logic
     return null;
   }

@@ -1,16 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
-
-// --- Configuration ---
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const askQuestion = (query: string): Promise<string> => {
-  return new Promise((resolve) => rl.question(query, resolve));
-};
+import { askQuestion, getDomainsServicesWithDomainMap, rl } from './utils.js';
 
 // --- Helpers ---
 const toPascalCase = (str: string): string => {
@@ -19,10 +9,6 @@ const toPascalCase = (str: string): string => {
     .join('');
 };
 
-interface DomainInfo {
-  dirName: string;
-  absolutePath: string;
-}
 
 interface ClientInfo {
   fileName: string;
@@ -30,18 +16,6 @@ interface ClientInfo {
   importPath: string; // relative to service file
   isNew?: boolean;
 }
-
-const getDomains = (): DomainInfo[] => {
-  const domainsDir = path.resolve('src/domain');
-  if (!fs.existsSync(domainsDir)) return [];
-
-  return fs.readdirSync(domainsDir, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory())
-    .map(dirent => ({
-      dirName: dirent.name,
-      absolutePath: path.join(domainsDir, dirent.name)
-    }));
-};
 
 const getClients = (domainDir: string, type: 'db' | 'http'): ClientInfo[] => {
   const clientsDir = path.join(domainDir, 'clients');
@@ -67,14 +41,17 @@ const getClients = (domainDir: string, type: 'db' | 'http'): ClientInfo[] => {
   return clients;
 };
 
+
 // --- Main Script ---
 async function main() {
   console.log("=====================================");
   console.log("     MCP Service Generator           ");
   console.log("=====================================\n");
 
-  // 1. Select Domain
-  const domains = getDomains();
+  // 1. Select distinct Domains
+  const domains = Array.from(
+    new Map(getDomainsServicesWithDomainMap().map((item) => [item.dirName, item])).values()
+  );
   if (domains.length === 0) {
     console.error("[mn] No domains found. Please run startup-project first or create a domain manually.");
     process.exit(1);

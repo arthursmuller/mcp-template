@@ -1,51 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
-
-// --- Configuration ---
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const askQuestion = (query: string): Promise<string> => {
-  return new Promise((resolve) => rl.question(query, resolve));
-};
-
-// --- Helpers ---
-
-// Split by space, hyphen, underscore, or dot
-const splitWords = (str: string): string[] => {
-  return str.trim().split(/[-_\s.]+/).filter(w => w.length > 0);
-};
-
-const toPascalCase = (str: string): string => {
-  return splitWords(str)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join('');
-};
-
-const toCamelCase = (str: string): string => {
-  const words = splitWords(str);
-  return words
-    .map((word, index) => {
-      const lower = word.toLowerCase();
-      return index === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
-    })
-    .join('');
-};
-
-const toKebabCase = (str: string): string => {
-  return splitWords(str)
-    .map(word => word.toLowerCase())
-    .join('-');
-};
-
-const toSnakeCase = (str: string): string => {
-  return splitWords(str)
-    .map(word => word.toLowerCase())
-    .join('_');
-};
+import { askQuestion, toKebabCase, toCamelCase, toSnakeCase, toPascalCase, rl } from './utils.js';
 
 const replaceInFile = (filePath: string, replacements: { search: RegExp | string, replace: string }[]) => {
   const fullPath = path.resolve(filePath);
@@ -111,7 +66,6 @@ const removeCommandFromPackageJson = () => {
   }
 }
 
-
 const deleteStartupScriptFile = () => {
   try {
     // Assuming the script is run from the project root via "npm run startup-project"
@@ -124,7 +78,6 @@ const deleteStartupScriptFile = () => {
     console.warn(`\n[WARN] Failed to delete startup script automatically:`, error);
   }
 }
-
 
 // --- Main Script ---
 async function main() {
