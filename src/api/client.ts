@@ -1,12 +1,11 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
-import env from "../env.js";
 
 class HttpClient {
   private client: AxiosInstance;
 
-  constructor(headers?: Record<string, string>) {
+  constructor(baseUrl: string, headers?: Record<string, string>) {
     this.client = axios.create({
-      baseURL: env.API.Url,
+      baseURL: baseUrl,
       timeout: 10000,
       headers: headers
     });

@@ -127,13 +127,14 @@ export function getHeaders(): Record<string, string> {
     const httpContent = `
 import HttpClient from "../../../api/client.js";
 import { getHeaders } from "../utils/api.js";
+import env from "../../../env.js";
 import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${serviceMethodName}.dto.js";
 
 export class ${httpClientClassName} {
   private readonly httpClient: HttpClient;
 
   constructor() {
-    this.httpClient = new HttpClient(getHeaders());
+    this.httpClient = new HttpClient(env.API.Url, getHeaders())
   }
 
   async ${clientMethodName}(params: ${requestDtoName}): Promise<${responseDtoName} | null> {
