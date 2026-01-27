@@ -166,7 +166,7 @@ const transformInputs = (inputs: RawInputs): ProjectConfig => {
   const httpClientFileName = `${domainInput}.http.client.ts`;
 
   // DTO Names
-  const serviceMethodPascal = toPascalCase(serviceMethod);
+  const serviceMethodPascal = toPascalCase(inputs.serviceMethodRaw);
   const requestDto = `${serviceMethodPascal}RequestDto`;
   const responseDto = `${serviceMethodPascal}ResponseDto`;
 

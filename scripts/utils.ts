@@ -19,11 +19,8 @@ export const logBanner =  (msg: string) => {
 }
 
 export const logEndBanner = (msg: string ) => {
-  console.log("\n=====================================");
-  console.log(`    ${msg} Created Successfully! 🚀    `);
-  console.log("=====================================");
+  logBanner(`${msg} Created Successfully! 🚀`);
 }
-
 
 
 // Split by space, hyphen, underscore, or dot

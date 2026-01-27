@@ -40,7 +40,7 @@ describe('Startup Project Script (Integration Test)', () => {
         "startup-project": "ts-node scripts/startup-project.ts" 
       }
     }, null, 2),
-    [abs('package-lock.json')]: JSON.stringify({ name: "example-mcp-proj-name" }),
+    [abs('package-lock.json')]: JSON.stringify({ name: "example-mcp-proj-name" }, null, 2),
     [abs('readme.md')]: "# example-mcp-proj-name MCP Server",
     [abs('src/env.ts')]: 'SERVER_NAME: "example-mcp-proj-name", process.env.EXAMPLE_TOOL === "false" ? null : toolMetadata.example_tool.name',
     [abs('src/tools.metadata.ts')]: 'example_tool: { name: "example_tool" }',
@@ -54,13 +54,22 @@ describe('Startup Project Script (Integration Test)', () => {
     // Domain Files
     [abs('src/domain/domain-name/dtos/domain.dto.ts')]: 
       'export interface DomainExampleRequestDto {} export interface DomainExampleResponseDto {}',
+
+    // UPDATED: Includes Promise<DomainExampleResponseDto>
     [abs('src/domain/domain-name/clients/domain.db.client.ts')]: 
-      'class DomainDbClient { async example(dto: DomainExampleRequestDto) {} } "../dtos/domain.dto.js"',
+      'import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domain.dto.js";\n' +
+      'export class DomainDbClient { async example(_: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> { return null; } }',
+
+    // UPDATED: Includes Promise<DomainExampleResponseDto>
     [abs('src/domain/domain-name/clients/domain.http.client.ts')]: 
-      'class DomainHttpClient { async example(dto: DomainExampleRequestDto) {} } "../dtos/domain.dto.js"',
+      'import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domain.dto.js";\n' +
+      'export class DomainHttpClient { async example(dto: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> { return null; } }',
+
+    // UPDATED: Includes Promise<DomainExampleResponseDto>
     [abs('src/domain/domain-name/services/domain.service.ts')]: 
       'import { DomainHttpClient } from "../clients/domain.http.client.js";\n' +
-      'class DomainService { constructor(private readonly httpClient: DomainHttpClient) {} async example(dto: DomainExampleRequestDto) { this.httpClient.example(dto) } } new DomainService(new DomainHttpClient())',
+      'import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domain.dto.js";\n' +
+      'export class DomainService { constructor(private readonly httpClient: DomainHttpClient) {} async example(dto: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> { return this.httpClient.example(dto); } } new DomainService(new DomainHttpClient())',
     
     // MCP Tools
     [abs('src/mcp/tools.ts')]: 
@@ -132,7 +141,7 @@ describe('Startup Project Script (Integration Test)', () => {
     });
   };
 
-  test('1. Should sanitize inputs and update global config files', async () => {
+  test('1. Should sanitize inputs and update global config files (package.json, package-lock.json, readme.md, env.ts, tools.metadata.ts)', async () => {
     mockAskQuestion
       .mockResolvedValueOnce('My Weather API') // Project
       .mockResolvedValueOnce('Weather Data')   // Domain
@@ -142,14 +151,26 @@ describe('Startup Project Script (Integration Test)', () => {
 
     await runScript();
 
+    // 1. Check package.json updates
     const pkg = JSON.parse(virtualFileSystem[abs('package.json')]);
     expect(pkg.name).toBe('my-weather-api');
+    expect(pkg.description).toBe('my-weather-api'); // MISSING IN ORIGINAL TEST
+
+    // 2. Check package-lock.json updates (MISSING IN ORIGINAL TEST)
+    const lock = JSON.parse(virtualFileSystem[abs('package-lock.json')]);
+    expect(lock.name).toBe('my-weather-api');
+
+    // 3. Check Readme updates (MISSING IN ORIGINAL TEST)
+    const readme = virtualFileSystem[abs('readme.md')];
+    expect(readme).toContain('# my-weather-api MCP Server');
+    expect(readme).not.toContain('example-mcp-proj-name');
     
+    // 4. Check env.ts updates (Existing)
     const env = virtualFileSystem[abs('src/env.ts')];
     expect(env).toContain('SERVER_NAME: "my-weather-api"');
     expect(env).toContain('process.env.CURRENT_WEATHER');
 
-    // NEW: Check metadata file updates
+    // 5. Check metadata file updates (Existing)
     const meta = virtualFileSystem[abs('src/tools.metadata.ts')];
     expect(meta).toContain('current_weather: {');
     expect(meta).toContain('name: "current_weather"');
@@ -197,33 +218,46 @@ describe('Startup Project Script (Integration Test)', () => {
     await runScript();
 
     const domainDir = abs('src/domain/order-system');
+    const clientsDir = path.join(domainDir, 'clients');
+    const servicesDir = path.join(domainDir, 'services');
+
+    // 1. Verify File Renames (Explicit Checks)
+    // The script first renames the domain directory, so subsequent file renames 
+    // happen relative to the new domain directory path.
+    const oldServicePath = path.join(servicesDir, 'domain.service.ts');
+    const newServicePath = path.join(servicesDir, 'order-system.service.ts');
+    expect(trackedRenames[oldServicePath]).toBe(newServicePath);
+
+    const oldDbClientPath = path.join(clientsDir, 'domain.db.client.ts');
+    const newDbClientPath = path.join(clientsDir, 'order-system.db.client.ts');
+    expect(trackedRenames[oldDbClientPath]).toBe(newDbClientPath);
+
+    const oldHttpClientPath = path.join(clientsDir, 'domain.http.client.ts');
+    const newHttpClientPath = path.join(clientsDir, 'order-system.http.client.ts');
+    expect(trackedRenames[oldHttpClientPath]).toBe(newHttpClientPath);
     
-    // Verify Service File
-    const servicePath = path.join(domainDir, 'services', 'order-system.service.ts');
-    const serviceContent = virtualFileSystem[servicePath];
-    
+    // 2. Verify Service Content Updates
+    const serviceContent = virtualFileSystem[newServicePath];
     expect(serviceContent).toBeDefined();
     expect(serviceContent).toContain('class OrderSystemService');
     expect(serviceContent).toContain('async createOrder(');
     expect(serviceContent).toContain('OrderSystemHttpClient');
     expect(serviceContent).toContain('this.httpClient.postOrder(');
+    expect(serviceContent).toContain('CreateOrderRequestDto');
 
-    // Verify HTTP Client File
-    const httpClientPath = path.join(domainDir, 'clients', 'order-system.http.client.ts');
-    const httpClientContent = virtualFileSystem[httpClientPath];
-    
+    // 3. Verify HTTP Client Content Updates
+    const httpClientContent = virtualFileSystem[newHttpClientPath];
     expect(httpClientContent).toBeDefined();
     expect(httpClientContent).toContain('class OrderSystemHttpClient');
     expect(httpClientContent).toContain('async postOrder(');
     expect(httpClientContent).toContain('"../dtos/createOrder.dto.js"');
+    expect(httpClientContent).toContain('CreateOrderResponseDto');
 
-    // NEW: Verify DB Client File
-    const dbClientPath = path.join(domainDir, 'clients', 'order-system.db.client.ts');
-    const dbClientContent = virtualFileSystem[dbClientPath];
-    
+    // 4. Verify DB Client Content Updates
+    const dbClientContent = virtualFileSystem[newDbClientPath];
     expect(dbClientContent).toBeDefined();
     expect(dbClientContent).toContain('class OrderSystemDbClient');
-    expect(dbClientContent).toContain('async postOrder('); // Renamed method
+    expect(dbClientContent).toContain('async postOrder(');
     expect(dbClientContent).toContain('"../dtos/createOrder.dto.js"');
   });
 
