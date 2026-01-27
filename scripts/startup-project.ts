@@ -1,13 +1,52 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { logBanner, askQuestion, toKebabCase, toCamelCase, toSnakeCase, toPascalCase, rl, logEndBanner } from './utils.js';
+import { logBanner, askQuestion, toKebabCase, toCamelCase, toSnakeCase, toPascalCase, getReadLineInterface, logEndBanner } from './utils.js';
 
-const endMessage = (projectName: string, domainDirName: string, domainServiceFileName: string, toolName: string) => {
+const rl = getReadLineInterface();
+
+interface RawInputs {
+  projectNameRaw: string;
+  domainInputRaw: string;
+  serviceMethodRaw: string;
+  toolNameRaw: string;
+  clientMethodNameRaw: string;
+}
+
+interface ProjectConfig {
+  // Inputs
+  projectName: string;
+  domainInput: string;
+  serviceMethod: string;
+  toolName: string;
+  clientMethodName: string;
+
+  // Derived Values
+  domainDirName: string;
+  domainPascalCase: string;
+  domainServiceClassName: string;
+  toolEnvVar: string;
+  domainServiceFileName: string;
+
+  // Client Transforms
+  dbClientClassName: string;
+  httpClientClassName: string;
+  dbClientFileName: string;
+  httpClientFileName: string;
+
+  // DTO Names
+  serviceMethodPascal: string;
+  requestDto: string;
+  responseDto: string;
+}
+
+// --- Helpers ---
+
+const endMessage = (config: ProjectConfig) => {
   logEndBanner("Configuration");
-  console.log(`1. Project renamed to: ${projectName}`);
-  console.log(`2. Domain setup: src/domain/${domainDirName}/services/${domainServiceFileName}`);
-  console.log(`3. Clients setup: src/domain/${domainDirName}/clients/`);
-  console.log(`4. Tool configured: ${toolName}`);
+  console.log(`1. Project renamed to: ${config.projectName}`);
+  console.log(`2. Domain setup: src/domain/${config.domainDirName}/services/${config.domainServiceFileName}`);
+  console.log(`3. Clients setup: src/domain/${config.domainDirName}/clients/`);
+  console.log(`4. Tool configured: ${config.toolName}`);
   console.log("\nNext Steps:");
   console.log("  npm install");
   console.log("  npm run build");
@@ -47,7 +86,6 @@ const replaceInFile = (filePath: string, replacements: { search: RegExp | string
 
 const renameDir = (oldPath: string, newPath: string) => {
   if (fs.existsSync(oldPath)) {
-    // If new path exists, we can't just move, but for init we assume clean state
     if (fs.existsSync(newPath)) {
         console.warn(`[WARN] Destination directory ${newPath} already exists. Skipping rename.`);
         return;
@@ -59,8 +97,18 @@ const renameDir = (oldPath: string, newPath: string) => {
   }
 };
 
-const removeCommandFromPackageJson = () => {
-   try {
+const renameFile = (oldPath: string, newPath: string) => {
+  if (fs.existsSync(oldPath)) {
+    fs.renameSync(oldPath, newPath);
+    console.log(`[QK] Renamed ${oldPath} to ${newPath}`);
+  } else {
+    console.warn(`[WARN] File not found at ${oldPath}`);
+  }
+};
+
+const cleanup = () => {
+  try {
+    // Remove command from package.json
     const packageJsonPath = path.resolve('package.json');
     if (fs.existsSync(packageJsonPath)) {
       const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8');
@@ -68,52 +116,41 @@ const removeCommandFromPackageJson = () => {
 
       if (packageJson.scripts && packageJson.scripts['startup-project']) {
         delete packageJson.scripts['startup-project'];
-        // Write back with 2-space indentation
         fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf8');
         console.log("[QK] Removed 'startup-project' script from package.json");
       }
     }
-  } catch (err) {
-    console.warn("[WARN] Failed to remove 'startup-project' script from package.json", err);
-  }
-}
 
-const deleteStartupScriptFile = () => {
-  try {
-    // Assuming the script is run from the project root via "npm run startup-project"
+    // Delete script file
     const scriptPath = path.join(process.cwd(), 'scripts', 'startup-project.ts');
     if (fs.existsSync(scriptPath)) {
       fs.unlinkSync(scriptPath);
       console.log(`\n[INFO] Cleanup: Startup script deleted (${scriptPath})`);
     }
-  } catch (error) {
-    console.warn(`\n[WARN] Failed to delete startup script automatically:`, error);
+  } catch (err) {
+    console.warn("[WARN] Cleanup failed", err);
   }
 }
 
-async function main() {
-  logBanner("MCP Template Initialization CLI");
+// --- Main Steps ---
 
-  // 1. Collect Inputs
-  const projectNameRaw = (await askQuestion("1. Project Name (kebab-case, e.g., my-weather-mcp): ")).trim();
-  const domainInputRaw = (await askQuestion("2. Domain Name (kebab-case, e.g., weather-forecast): ")).trim();
-  const serviceMethodRaw = (await askQuestion("3. Service Method Name (camelCase, e.g., getForecast): ")).trim();
-  const toolNameRaw = (await askQuestion("4. Tool Name (snake_case, e.g., get_forecast): ")).trim();
-  const clientMethodNameRaw = (await askQuestion("5. Domain Client Method Name (camelCase, e.g., fetchForecast): ")).trim();
-  
-  // Transform Inputs (Enforcing Naming Conventions)
-  const projectName = toKebabCase(projectNameRaw);
-  const domainInput = toKebabCase(domainInputRaw);
-  const serviceMethod = toCamelCase(serviceMethodRaw);
-  const toolName = toSnakeCase(toolNameRaw);
-  const clientMethodName = toCamelCase(clientMethodNameRaw);
+const loadInputs = async (): Promise<RawInputs> => {
+  const projectNameRaw = (await askQuestion(rl, "1. Project Name (kebab-case, e.g., my-weather-mcp): ")).trim();
+  const domainInputRaw = (await askQuestion(rl, "2. Domain Name (kebab-case, e.g., weather-forecast): ")).trim();
+  const serviceMethodRaw = (await askQuestion(rl, "3. Service Method Name (camelCase, e.g., getForecast): ")).trim();
+  const toolNameRaw = (await askQuestion(rl, "4. Tool Name (snake_case, e.g., get_forecast): ")).trim();
+  const clientMethodNameRaw = (await askQuestion(rl, "5. Domain Client Method Name (camelCase, e.g., fetchForecast): ")).trim();
 
-  console.log("\n[INFO] Configuration confirmed:");
-  console.log(`  Project: ${projectName}`);
-  console.log(`  Domain:  ${domainInput}`);
-  console.log(`  Service: ${serviceMethod}`);
-  console.log(`  Tool:    ${toolName}`);
-  console.log(`  Client:  ${clientMethodName}`);
+  return { projectNameRaw, domainInputRaw, serviceMethodRaw, toolNameRaw, clientMethodNameRaw };
+};
+
+const transformInputs = (inputs: RawInputs): ProjectConfig => {
+  // Transform Inputs
+  const projectName = toKebabCase(inputs.projectNameRaw);
+  const domainInput = toKebabCase(inputs.domainInputRaw);
+  const serviceMethod = toCamelCase(inputs.serviceMethodRaw);
+  const toolName = toSnakeCase(inputs.toolNameRaw);
+  const clientMethodName = toCamelCase(inputs.clientMethodNameRaw);
 
   // Derived Values
   const domainDirName = domainInput.toLowerCase();
@@ -132,149 +169,188 @@ async function main() {
   const serviceMethodPascal = toPascalCase(serviceMethod);
   const requestDto = `${serviceMethodPascal}RequestDto`;
   const responseDto = `${serviceMethodPascal}ResponseDto`;
+
+  console.log("\n[INFO] Configuration confirmed:");
+  console.log(`  Project: ${projectName}`);
+  console.log(`  Domain:  ${domainInput}`);
+  console.log(`  Service: ${serviceMethod}`);
+  console.log(`  Tool:    ${toolName}`);
+  console.log(`  Client:  ${clientMethodName}`);
   
   console.log("\n[INFO] Starting configuration...\n");
 
-  // 2. Update Metadata & Config Files
+  return {
+    projectName,
+    domainInput,
+    serviceMethod,
+    toolName,
+    clientMethodName,
+    domainDirName,
+    domainPascalCase,
+    domainServiceClassName,
+    toolEnvVar,
+    domainServiceFileName,
+    dbClientClassName,
+    httpClientClassName,
+    dbClientFileName,
+    httpClientFileName,
+    serviceMethodPascal,
+    requestDto,
+    responseDto
+  };
+};
+
+const updateGlobalConfig = (config: ProjectConfig) => {
   // package.json
   replaceInFile('package.json', [
-    { search: /"name": "example-mcp-proj-name"/, replace: `"name": "${projectName}"` },
-    { search: /"description": "example-mcp-proj-name"/, replace: `"description": "${projectName}"` }
+    { search: /"name": "example-mcp-proj-name"/, replace: `"name": "${config.projectName}"` },
+    { search: /"description": "example-mcp-proj-name"/, replace: `"description": "${config.projectName}"` }
   ]);
   
-  //SB-lock.json
+  // package-lock.json
   replaceInFile('package-lock.json', [
-    { search: /"name": "example-mcp-proj-name"/g, replace: `"name": "${projectName}"` }
+    { search: /"name": "example-mcp-proj-name"/g, replace: `"name": "${config.projectName}"` }
   ]);
 
   // readme.md
   replaceInFile('readme.md', [
-    { search: /example-mcp-proj-name/g, replace: projectName }
+    { search: /example-mcp-proj-name/g, replace: config.projectName }
   ]);
 
   // src/env.ts
   replaceInFile('src/env.ts', [
-    { search: /SERVER_NAME: "example-mcp-proj-name"/, replace: `SERVER_NAME: "${projectName}"` },
-    { search: /process\.env\.EXAMPLE_TOOL/g, replace: `process.env.${toolEnvVar}` },
-    { search: /toolMetadata\.example_tool\.name/g, replace: `toolMetadata.${toolName}.name` }
+    { search: /SERVER_NAME: "example-mcp-proj-name"/, replace: `SERVER_NAME: "${config.projectName}"` },
+    { search: /process\.env\.EXAMPLE_TOOL/g, replace: `process.env.${config.toolEnvVar}` },
+    { search: /toolMetadata\.example_tool\.name/g, replace: `toolMetadata.${config.toolName}.name` }
   ]);
 
-  // 3. Update Metadata (src/tools.metadata.ts)
+  // src/tools.metadata.ts
   replaceInFile('src/tools.metadata.ts', [
-    { search: /example_tool:/g, replace: `${toolName}:` },
-    { search: /name: "example_tool"/g, replace: `name: "${toolName}"` }
+    { search: /example_tool:/g, replace: `${config.toolName}:` },
+    { search: /name: "example_tool"/g, replace: `name: "${config.toolName}"` }
   ]);
+};
 
-  // 4. Update Domain Layer
-  // Move folder src/domain/domain-name -> src/domain/[domainDirName]
+const updateDomainStructure = (config: ProjectConfig) => {
+  // 1. Move folder src/domain/domain-name -> src/domain/[domainDirName]
   const oldDomainPath = path.join('src', 'domain', 'domain-name');
-  const newDomainPath = path.join('src', 'domain', domainDirName);
+  const newDomainPath = path.join('src', 'domain', config.domainDirName);
   renameDir(oldDomainPath, newDomainPath);
 
-  // Update DTOs
+  // 2. Rename DTO file
   const dtoDir = path.join(newDomainPath, 'dtos');
   const oldDtoPath = path.join(dtoDir, 'domain.dto.ts');
-  const newDtoPath = path.join(dtoDir, `${serviceMethod}.dto.ts`);
-  
-  // Rename DTO file
-  renameDir(oldDtoPath, newDtoPath);
+  const newDtoPath = path.join(dtoDir, `${config.serviceMethod}.dto.ts`);
+  renameFile(oldDtoPath, newDtoPath);
 
-  // Update DTO content
-  replaceInFile(newDtoPath, [
-    { search: /DomainExampleRequestDto/g, replace: requestDto },
-    { search: /DomainExampleResponseDto/g, replace: responseDto }
-  ]);
-
-  // --- Update Clients ---
+  // 3. Rename Client Files
   const clientsDir = path.join(newDomainPath, 'clients');
   const oldDbClientPath = path.join(clientsDir, 'domain.db.client.ts');
-  const newDbClientPath = path.join(clientsDir, dbClientFileName);
+  const newDbClientPath = path.join(clientsDir, config.dbClientFileName);
+  renameFile(oldDbClientPath, newDbClientPath);
+
   const oldHttpClientPath = path.join(clientsDir, 'domain.http.client.ts');
-  const newHttpClientPath = path.join(clientsDir, httpClientFileName);
+  const newHttpClientPath = path.join(clientsDir, config.httpClientFileName);
+  renameFile(oldHttpClientPath, newHttpClientPath);
 
-  // Rename Client Files
-  renameDir(oldDbClientPath, newDbClientPath);
-  renameDir(oldHttpClientPath, newHttpClientPath);
-
-  // Update DB Client Content
-  replaceInFile(newDbClientPath, [
-    { search: /class DomainDbClient/g, replace: `class ${dbClientClassName}` },
-    { search: /async example\(/g, replace: `async ${clientMethodName}(` },
-    // DTO Updates
-    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${serviceMethod}.dto.js"` },
-    { search: /DomainExampleRequestDto/g, replace: requestDto },
-    { search: /DomainExampleResponseDto/g, replace: responseDto }
-  ]);
-
-  // Update HTTP Client Content
-  replaceInFile(newHttpClientPath, [
-    { search: /class DomainHttpClient/g, replace: `class ${httpClientClassName}` },
-    { search: /async example\(/g, replace: `async ${clientMethodName}(` },
-    // DTO Updates
-    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${serviceMethod}.dto.js"` },
-    { search: /DomainExampleRequestDto/g, replace: requestDto },
-    { search: /DomainExampleResponseDto/g, replace: responseDto }
-  ]);
-
-  // Update src/domain/[domainDirName]/services/domain.ts -> [domainInput].service.ts
+  // 4. Rename Service File
   const servicesDir = path.join(newDomainPath, 'services');
   const oldServiceFile = path.join(servicesDir, 'domain.service.ts'); 
-  const newServiceFile = path.join(servicesDir, domainServiceFileName); 
+  const newServiceFile = path.join(servicesDir, config.domainServiceFileName); 
+  renameFile(oldServiceFile, newServiceFile);
+};
 
-  if (fs.existsSync(oldServiceFile)) {
-    fs.renameSync(oldServiceFile, newServiceFile);
-    console.log(`[QK] Renamed ${oldServiceFile} to ${newServiceFile}`);
-  } else {
-    console.warn(`[WARN] Service file not found at ${oldServiceFile}`);
-  }
-
-  replaceInFile(newServiceFile, [
-    { search: /class DomainService/g, replace: `class ${domainServiceClassName}` },
-    // Update the method definition
-    { search: /async example\(/g, replace: `async ${serviceMethod}(` },
-    
-    // Update Imports to point to new client file and class
-    { search: /"\.\.\/clients\/domain\.http\.client\.js"/g, replace: `"../clients/${httpClientFileName.replace('.ts', '.js')}"` },
-    { search: /DomainHttpClient/g, replace: httpClientClassName },
-    
-    // Update usage of client method
-    { search: /this\.httpClient\.example\(/g, replace: `this.httpClient.${clientMethodName}(` },
-
-    // Update the export default new ...
-    { search: /new DomainService\(/g, replace: `new ${domainServiceClassName}(` },
-    
-    // Update DTO imports (handling the new DTO filename)
-    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${serviceMethod}.dto.js"` },
-    { search: /DomainExampleRequestDto/g, replace: requestDto },
-    { search: /DomainExampleResponseDto/g, replace: responseDto }
+const updateDomainContent = (config: ProjectConfig) => {
+  const domainPath = path.join('src', 'domain', config.domainDirName);
+  const dtoPath = path.join(domainPath, 'dtos', `${config.serviceMethod}.dto.ts`);
+  
+  // DTOs
+  replaceInFile(dtoPath, [
+    { search: /DomainExampleRequestDto/g, replace: config.requestDto },
+    { search: /DomainExampleResponseDto/g, replace: config.responseDto }
   ]);
 
-  // 5. Update MCP Tools Registration (src/mcp/tools.ts)
-  // We need to update imports and the usage of the service
+  // Clients
+  const clientsDir = path.join(domainPath, 'clients');
+  const dbClientPath = path.join(clientsDir, config.dbClientFileName);
+  const httpClientPath = path.join(clientsDir, config.httpClientFileName);
+
+  // Update DB Client
+  replaceInFile(dbClientPath, [
+    { search: /class DomainDbClient/g, replace: `class ${config.dbClientClassName}` },
+    { search: /async example\(/g, replace: `async ${config.clientMethodName}(` },
+    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${config.serviceMethod}.dto.js"` },
+    { search: /DomainExampleRequestDto/g, replace: config.requestDto },
+    { search: /DomainExampleResponseDto/g, replace: config.responseDto }
+  ]);
+
+  // Update HTTP Client
+  replaceInFile(httpClientPath, [
+    { search: /class DomainHttpClient/g, replace: `class ${config.httpClientClassName}` },
+    { search: /async example\(/g, replace: `async ${config.clientMethodName}(` },
+    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${config.serviceMethod}.dto.js"` },
+    { search: /DomainExampleRequestDto/g, replace: config.requestDto },
+    { search: /DomainExampleResponseDto/g, replace: config.responseDto }
+  ]);
+
+  // Service
+  const servicePath = path.join(domainPath, 'services', config.domainServiceFileName);
+  replaceInFile(servicePath, [
+    { search: /class DomainService/g, replace: `class ${config.domainServiceClassName}` },
+    { search: /async example\(/g, replace: `async ${config.serviceMethod}(` },
+    
+    // Imports & Client Usage
+    { search: /"\.\.\/clients\/domain\.http\.client\.js"/g, replace: `"../clients/${config.httpClientFileName.replace('.ts', '.js')}"` },
+    { search: /DomainHttpClient/g, replace: config.httpClientClassName },
+    { search: /this\.httpClient\.example\(/g, replace: `this.httpClient.${config.clientMethodName}(` },
+    { search: /new DomainService\(/g, replace: `new ${config.domainServiceClassName}(` },
+    
+    // DTOs
+    { search: /"\.\.\/dtos\/domain\.dto\.js"/g, replace: `"../dtos/${config.serviceMethod}.dto.js"` },
+    { search: /DomainExampleRequestDto/g, replace: config.requestDto },
+    { search: /DomainExampleResponseDto/g, replace: config.responseDto }
+  ]);
+};
+
+const updateMcpRegistry = (config: ProjectConfig) => {
   replaceInFile('src/mcp/tools.ts', [
-    // 1. Update Import Path: "../domain/domain-name/services/domain.service.js" -> "../[domainDirName]/services/[domainInput].service.js"
-    { search: /domain-name\/services\/domain\.service\.js/g, replace: `${domainDirName}/services/${domainServiceFileName.replace('.ts', '.js')}` },
+    // 1. Update Import Path
+    { search: /domain-name\/services\/domain\.service\.js/g, replace: `${config.domainDirName}/services/${config.domainServiceFileName.replace('.ts', '.js')}` },
     
-    // 2. Update Import Variable: "import DomainService" -> "import [DomainServiceClassName]"
-    { search: /import DomainService/g, replace: `import ${domainServiceClassName}` },
+    // 2. Update Import Variable
+    { search: /import DomainService/g, replace: `import ${config.domainServiceClassName}` },
 
-    // 3. Update Usage in Callback: "DomainService.example" -> "[DomainServiceClassName].[method]"
-    { search: /DomainService\.example/g, replace: `${domainServiceClassName}.${serviceMethod}` },
+    // 3. Update Usage in Callback
+    { search: /DomainService\.example/g, replace: `${config.domainServiceClassName}.${config.serviceMethod}` },
 
-    // 4. Update usage in .bind(): ".bind(DomainService)" -> ".bind([DomainServiceClassName])"
-    { search: /\.bind\(DomainService\)/g, replace: `.bind(${domainServiceClassName})` },
+    // 4. Update usage in .bind()
+    { search: /\.bind\(DomainService\)/g, replace: `.bind(${config.domainServiceClassName})` },
 
-    // 5. Update Tool Metadata Keys: toolMetadata.example_tool -> toolMetadata.[toolName]
-    { search: /toolMetadata\.example_tool/g, replace: `toolMetadata.${toolName}` }
+    // 5. Update Tool Metadata Keys
+    { search: /toolMetadata\.example_tool/g, replace: `toolMetadata.${config.toolName}` }
   ]);
+};
+
+// --- Main Execution ---
+
+async function main() {
+  logBanner("MCP Template Initialization CLI");
+
+  const rawInputs = await loadInputs();
+  const config = transformInputs(rawInputs);
 
 
-  endMessage(projectName, domainDirName, domainServiceFileName, toolName);
+
+  updateGlobalConfig(config);
+  updateDomainStructure(config);
+  updateDomainContent(config);
+  updateMcpRegistry(config);
+
+  endMessage(config);
   
   rl.close();
 
-  deleteStartupScriptFile();
-  removeCommandFromPackageJson();
+  cleanup();
 }
 
 main().catch(err => {
@@ -282,4 +358,3 @@ main().catch(err => {
   rl.close();
   process.exit(1);
 });
-

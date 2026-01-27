@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { logBanner, askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase, toKebabCase, toCamelCase, logEndBanner } from './utils.js';
+import { logBanner, askQuestion, getDomainsServicesWithDomainMap, getReadLineInterface, toPascalCase, toKebabCase, toCamelCase, logEndBanner } from './utils.js';
+
+const rl = getReadLineInterface();
 
 interface ClientInfo {
   fileName: string;
@@ -60,7 +62,7 @@ async function main() {
   console.log("Available Domains:");
   domains.forEach((d, i) => console.log(`  [${i + 1}] ${d.dirName}`));
   
-  const domainIdx = await askQuestion("\nSelect Domain (number): ");
+  const domainIdx = await askQuestion(rl, "\nSelect Domain (number): ");
   const selectedDomain = domains[parseInt(domainIdx.trim()) - 1];
 
   if (!selectedDomain) {
@@ -71,13 +73,13 @@ async function main() {
   const domainRoot = selectedDomain.rootPath;
 
   // 2. Service Details
-  const serviceNameRaw = (await askQuestion("Service Name (kebab-case, e.g., user-profile): ")).trim();
+  const serviceNameRaw = (await askQuestion(rl, "Service Name (kebab-case, e.g., user-profile): ")).trim();
   const serviceNameKebab = toKebabCase(serviceNameRaw);
   const serviceClassName = `${toPascalCase(serviceNameKebab)}Service`;
   const serviceFileName = `${serviceNameKebab}.service.ts`;
 
   // 3. Method & DTO
-  const methodNameRaw = (await askQuestion("Add a method name? (camelCase, e.g., getUser, or leave empty): ")).trim();
+  const methodNameRaw = (await askQuestion(rl, "Add a method name? (camelCase, e.g., getUser, or leave empty): ")).trim();
   let methodName = '';
   let requestDtoName = '';
   let responseDtoName = '';
@@ -102,10 +104,10 @@ async function main() {
   console.log("  [2] Create New");
   existingDbClients.forEach((c, i) => console.log(`  [${i + 3}] Use Existing: ${c.className}`));
   
-  const dbChoice = (await askQuestion("Select option: ")).trim();
+  const dbChoice = (await askQuestion(rl, "Select option: ")).trim();
   
   if (dbChoice === '2') {
-    const nameRaw = (await askQuestion("New DB Client Name (kebab-case, e.g., user): ")).trim();
+    const nameRaw = (await askQuestion(rl, "New DB Client Name (kebab-case, e.g., user): ")).trim();
     const nameKebab = toKebabCase(nameRaw);
     const className = `${toPascalCase(nameKebab)}DbClient`;
     const fileName = `${nameKebab}.db.client.ts`;
@@ -128,10 +130,10 @@ async function main() {
   console.log("  [2] Create New");
   existingHttpClients.forEach((c, i) => console.log(`  [${i + 3}] Use Existing: ${c.className}`));
   
-  const httpChoice = (await askQuestion("Select option: ")).trim();
+  const httpChoice = (await askQuestion(rl, "Select option: ")).trim();
 
   if (httpChoice === '2') {
-    const nameRaw = (await askQuestion("New HTTP Client Name (kebab-case, e.g., weather): ")).trim();
+    const nameRaw = (await askQuestion(rl, "New HTTP Client Name (kebab-case, e.g., weather): ")).trim();
     const nameKebab = toKebabCase(nameRaw);
     const className = `${toPascalCase(nameKebab)}HttpClient`;
     const fileName = `${nameKebab}.http.client.ts`;

@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase, toCamelCase, toSnakeCase, logBanner, logEndBanner, DomainInfo } from './utils.js';
+import { askQuestion, getDomainsServicesWithDomainMap, toPascalCase, toCamelCase, toSnakeCase, logBanner, logEndBanner, DomainInfo, getReadLineInterface } from './utils.js';
 
+const rl = getReadLineInterface();
+  
 interface ClientInfo {
   fileName: string;
   className: string;
@@ -77,7 +79,7 @@ async function main() {
     console.log(`  [${i + 1}] ${d.className} (from ${d.dirName})`);
   });
 
-  const selectionIndex = await askQuestion("\nSelect a Domain Service (number): ");
+  const selectionIndex = await askQuestion(rl, "\nSelect a Domain Service (number): ");
   const selectedDomain = domains[parseInt(selectionIndex.trim()) - 1];
 
   if (!selectedDomain) {
@@ -85,13 +87,13 @@ async function main() {
     process.exit(1);
   }
 
-  const methodNameRaw = (await askQuestion("New Service Method Name (camelCase, e.g., getWeather): ")).trim();
+  const methodNameRaw = (await askQuestion(rl, "New Service Method Name (camelCase, e.g., getWeather): ")).trim();
   const methodName = toCamelCase(methodNameRaw);
   
-  const toolNameRaw = (await askQuestion("Tool Name (snake_case, e.g., get_weather): ")).trim();
+  const toolNameRaw = (await askQuestion(rl, "Tool Name (snake_case, e.g., get_weather): ")).trim();
   const toolName = toSnakeCase(toolNameRaw);
 
-  const toolDescription = (await askQuestion("Tool Description: ")).trim();
+  const toolDescription = (await askQuestion(rl, "Tool Description: ")).trim();
 
   // Derived Names
   const requestDtoName = `${toPascalCase(methodName)}RequestDto`;
@@ -106,7 +108,7 @@ async function main() {
   const httpClients =  getClients(selectedDomain.dirName, 'http');
   
   if (httpClients.length > 0) {
-    const wantHttp = (await askQuestion("\nWant to add a http client method? (y/N): ")).trim().toLowerCase();
+    const wantHttp = (await askQuestion(rl, "\nWant to add a http client method? (y/N): ")).trim().toLowerCase();
     if (wantHttp === 'y' || wantHttp === 'yes') {
       if (httpClients.length === 1) {
         selectedHttpClient = httpClients[0];
@@ -114,12 +116,12 @@ async function main() {
       } else {
         console.log("Available HTTP Clients:");
         httpClients.forEach((c, i) => console.log(`  [${i + 1}] ${c.className} (${c.fileName})`));
-        const clientIdx = await askQuestion("Select HTTP Client (number): ");
+        const clientIdx = await askQuestion(rl, "Select HTTP Client (number): ");
         selectedHttpClient = httpClients[parseInt(clientIdx.trim()) - 1];
       }
 
       if (selectedHttpClient) {
-        const methodRaw = (await askQuestion(`HTTP Client Method Name (default: ${methodName}): `)).trim();
+        const methodRaw = (await askQuestion(rl, `HTTP Client Method Name (default: ${methodName}): `)).trim();
         httpClientMethodName = methodRaw ? toCamelCase(methodRaw) : methodName;
       }
     }
@@ -131,7 +133,7 @@ async function main() {
   const ybClients = getClients(selectedDomain.dirName, 'db');
 
   if (ybClients.length > 0) {
-    const wantDb = (await askQuestion("\nWant to add a db client method? (y/N): ")).trim().toLowerCase();
+    const wantDb = (await askQuestion(rl, "\nWant to add a db client method? (y/N): ")).trim().toLowerCase();
     if (wantDb === 'y' || wantDb === 'yes') {
       if (ybClients.length === 1) {
         selectedDbClient = ybClients[0];
@@ -139,12 +141,12 @@ async function main() {
       } else {
         console.log("Available DB Clients:");
         ybClients.forEach((c, i) => console.log(`  [${i + 1}] ${c.className} (${c.fileName})`));
-        const clientIdx = await askQuestion("Select DB Client (number): ");
+        const clientIdx = await askQuestion(rl, "Select DB Client (number): ");
         selectedDbClient = ybClients[parseInt(clientIdx.trim()) - 1];
       }
 
       if (selectedDbClient) {
-        const methodRaw = (await askQuestion(`DB Client Method Name (default: ${methodName}): `)).trim();
+        const methodRaw = (await askQuestion(rl, `DB Client Method Name (default: ${methodName}): `)).trim();
         dbClientMethodName = methodRaw ? toCamelCase(methodRaw) : methodName;
       }
     }

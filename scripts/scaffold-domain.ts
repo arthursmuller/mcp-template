@@ -1,12 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, rl, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from './utils.js';
+import { askQuestion, getReadLineInterface, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from './utils.js';
+
+const rl = getReadLineInterface();
 
 async function main() {
   logBanner("MCP Domain Generator");
 
   // 1. Domain Name
-  const domainNameRaw = (await askQuestion("1. Domain Name (kebab-case, e.g., weather-data): ")).trim();
+  const domainNameRaw = (await askQuestion(rl, "1. Domain Name (kebab-case, e.g., weather-data): ")).trim();
   if (!domainNameRaw) {
     console.error("Domain name is required.");
     process.exit(1);
@@ -20,22 +22,22 @@ async function main() {
   }
 
   // 2. HTTP Client
-  const addHttpRaw = (await askQuestion("2. Add HTTP Client? (y/N): ")).trim().toLowerCase();
+  const addHttpRaw = (await askQuestion(rl, "2. Add HTTP Client? (y/N): ")).trim().toLowerCase();
   const addHttp = addHttpRaw === 'y' || addHttpRaw === 'yes';
 
   // 3. DB Client
-  const addDbRaw = (await askQuestion("3. Add DB Client? (y/N): ")).trim().toLowerCase();
+  const addDbRaw = (await askQuestion(rl, "3. Add DB Client? (y/N): ")).trim().toLowerCase();
   const addDb = addDbRaw === 'y' || addDbRaw === 'yes';
 
   // 4. Client Method Name (if applicable)
   let clientMethodName = 'fetchData';
   if (addHttp || addDb) {
-    const rawMethod = (await askQuestion("4. Client Method Name (camelCase, e.g., fetchData): ")).trim();
+    const rawMethod = (await askQuestion(rl, "4. Client Method Name (camelCase, e.g., fetchData): ")).trim();
     if (rawMethod) clientMethodName = toCamelCase(rawMethod);
   }
 
   // 5. Service Method Name
-  const serviceMethodRaw = (await askQuestion("5. Service Method Name (camelCase, e.g., getWeatherData): ")).trim();
+  const serviceMethodRaw = (await askQuestion(rl, "5. Service Method Name (camelCase, e.g., getWeatherData): ")).trim();
   const serviceMethodName = serviceMethodRaw ? toCamelCase(serviceMethodRaw) : 'getData';
 
   console.log("\n[INFO] Generating domain structure...\n");

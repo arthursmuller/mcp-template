@@ -2,12 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 
-export const rl = readline.createInterface({
+export const getReadLineInterface = () => readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
 
-export const askQuestion = (query: string): Promise<string> => {
+export const askQuestion = (rl: readline.Interface, query: string): Promise<string> => {
   return new Promise((resolve) => rl.question(query, resolve));
 };
 

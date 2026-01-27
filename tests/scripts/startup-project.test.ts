@@ -4,7 +4,7 @@ import * as path from 'path';
 // 1. Mock utils
 jest.mock('../../scripts/utils', () => ({
   askQuestion: jest.fn(),
-  rl: { close: jest.fn() },
+  getReadLineInterface: jest.fn(()=> ({ close: jest.fn() })) ,
   logBanner: jest.fn(),
   logEndBanner: jest.fn(),
   toKebabCase: jest.requireActual('../../scripts/utils').toKebabCase,
@@ -35,7 +35,10 @@ describe('Startup Project Script (Integration Test)', () => {
     [abs('package.json')]: JSON.stringify({
       name: "example-mcp-proj-name",
       description: "example-mcp-proj-name",
-      scripts: { "startup-project": "ts-node scripts/startup-project.ts" }
+      scripts: { 
+        "start": "node dist/index.js",
+        "startup-project": "ts-node scripts/startup-project.ts" 
+      }
     }, null, 2),
     [abs('package-lock.json')]: JSON.stringify({ name: "example-mcp-proj-name" }),
     [abs('readme.md')]: "# example-mcp-proj-name MCP Server",
@@ -145,6 +148,11 @@ describe('Startup Project Script (Integration Test)', () => {
     const env = virtualFileSystem[abs('src/env.ts')];
     expect(env).toContain('SERVER_NAME: "my-weather-api"');
     expect(env).toContain('process.env.CURRENT_WEATHER');
+
+    // NEW: Check metadata file updates
+    const meta = virtualFileSystem[abs('src/tools.metadata.ts')];
+    expect(meta).toContain('current_weather: {');
+    expect(meta).toContain('name: "current_weather"');
   });
 
   test('2. Should rename Domain directory and files', async () => {
@@ -170,7 +178,12 @@ describe('Startup Project Script (Integration Test)', () => {
     expect(trackedRenames[oldDto]).toBe(newDto);
     
     // Verify file actually exists in VFS at new path
-    expect(virtualFileSystem[newDto]).toBeDefined();
+    const dtoContent = virtualFileSystem[newDto];
+    expect(dtoContent).toBeDefined();
+
+    // NEW: Verify DTO content replacement
+    expect(dtoContent).toContain('export interface LoginRequestDto');
+    expect(dtoContent).toContain('export interface LoginResponseDto');
   });
 
   test('3. Should update Service and Client code content correctly', async () => {
@@ -195,14 +208,23 @@ describe('Startup Project Script (Integration Test)', () => {
     expect(serviceContent).toContain('OrderSystemHttpClient');
     expect(serviceContent).toContain('this.httpClient.postOrder(');
 
-    // Verify Client File
-    const clientPath = path.join(domainDir, 'clients', 'order-system.http.client.ts');
-    const clientContent = virtualFileSystem[clientPath];
+    // Verify HTTP Client File
+    const httpClientPath = path.join(domainDir, 'clients', 'order-system.http.client.ts');
+    const httpClientContent = virtualFileSystem[httpClientPath];
     
-    expect(clientContent).toBeDefined();
-    expect(clientContent).toContain('class OrderSystemHttpClient');
-    expect(clientContent).toContain('async postOrder(');
-    expect(clientContent).toContain('"../dtos/createOrder.dto.js"');
+    expect(httpClientContent).toBeDefined();
+    expect(httpClientContent).toContain('class OrderSystemHttpClient');
+    expect(httpClientContent).toContain('async postOrder(');
+    expect(httpClientContent).toContain('"../dtos/createOrder.dto.js"');
+
+    // NEW: Verify DB Client File
+    const dbClientPath = path.join(domainDir, 'clients', 'order-system.db.client.ts');
+    const dbClientContent = virtualFileSystem[dbClientPath];
+    
+    expect(dbClientContent).toBeDefined();
+    expect(dbClientContent).toContain('class OrderSystemDbClient');
+    expect(dbClientContent).toContain('async postOrder('); // Renamed method
+    expect(dbClientContent).toContain('"../dtos/createOrder.dto.js"');
   });
 
   test('4. Should update MCP Tools Registry (tools.ts)', async () => {
@@ -236,7 +258,13 @@ describe('Startup Project Script (Integration Test)', () => {
     mockAskQuestion.mockResolvedValue('test');
     await runScript();
 
+    // Check file deletion
     const scriptPath = abs(path.join('scripts', 'startup-project.ts'));
     expect(trackedDeletions).toContain(scriptPath);
+
+    // NEW: Check package.json script removal
+    const pkg = JSON.parse(virtualFileSystem[abs('package.json')]);
+    expect(pkg.scripts['startup-project']).toBeUndefined();
+    expect(pkg.scripts['start']).toBeDefined(); // Ensure we didn't delete other scripts
   });
 });
