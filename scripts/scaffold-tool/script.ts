@@ -8,7 +8,7 @@ import {
   toSnakeCase, 
   logEndBanner, 
   DomainInfo, 
-  getReadLineInterface,
+  getReadLineInterface, 
   execute 
 } from '../utils.js';
 
@@ -189,8 +189,9 @@ const transformInputs = (inputs: RawInputs): ToolConfig => {
     toolName,
     toolDescription: inputs.toolDescription,
     
-    requestDtoName: `${toPascalCase(methodName)}RequestDto`,
-    responseDtoName: `${toPascalCase(methodName)}ResponseDto`,
+    // FIX: Use methodNameRaw to ensure correct PascalCase conversion (e.g. "comma-test" -> "CommaTest")
+    requestDtoName: `${toPascalCase(inputs.methodNameRaw)}RequestDto`,
+    responseDtoName: `${toPascalCase(inputs.methodNameRaw)}ResponseDto`,
     dtoFile: path.join(dtoDir, `${methodName}.dto.ts`),
 
     httpClient: inputs.httpClientSelection.client,

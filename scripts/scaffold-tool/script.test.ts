@@ -166,22 +166,22 @@ export default env;`;
     // 3. Check DTO
     const dtoPath = path.join(dtosDir, 'getForecast.dto.ts');
     expect(mockFs.virtualFileSystem[dtoPath]).toBeDefined();
-    const expectedDto = `export interface GetforecastRequestDto {
+    const expectedDto = `export interface GetForecastRequestDto {
   // TODO: Add properties
 }
 
-export interface GetforecastResponseDto {
+export interface GetForecastResponseDto {
   // TODO: Add properties
 }
 `;
     expect(mockFs.virtualFileSystem[dtoPath].trim()).toBe(expectedDto.trim());
 
     // 4. Check Service Update
-    const expectedService = `import { GetforecastRequestDto, GetforecastResponseDto } from "../dtos/getForecast.dto.js";
+    const expectedService = `import { GetForecastRequestDto, GetForecastResponseDto } from "../dtos/getForecast.dto.js";
 export class WeatherService {
   constructor() {}
 
-  async getForecast(dto: GetforecastRequestDto): Promise<GetforecastResponseDto | null> {
+  async getForecast(dto: GetForecastRequestDto): Promise<GetForecastResponseDto | null> {
     // TODO: Implement logic
     // Example: const data = await this.httpClient.fetchForecast(dto);
     // return data;
@@ -192,13 +192,13 @@ export class WeatherService {
     expect(mockFs.virtualFileSystem[weatherServicePath].trim()).toBe(expectedService.trim());
 
     // 5. Check HTTP Client Update
-    const expectedClient = `import { GetforecastRequestDto, GetforecastResponseDto } from "../dtos/getForecast.dto.js";
+    const expectedClient = `import { GetForecastRequestDto, GetForecastResponseDto } from "../dtos/getForecast.dto.js";
 export class WeatherHttpClient {
   constructor() {}
 
-  async fetchForecast(dto: GetforecastRequestDto): Promise<GetforecastResponseDto | null> {
+  async fetchForecast(dto: GetForecastRequestDto): Promise<GetForecastResponseDto | null> {
     // TODO: Implement HTTP Request
-    // return this.httpClient.post<GetforecastResponseDto>("/path", dto);
+    // return this.httpClient.post<GetForecastResponseDto>("/path", dto);
     return null;
   }
 }`;
@@ -225,7 +225,7 @@ const tools: Record<string, ToolDefinition> = {
     name: toolMetadata.get_forecast.name,
     description: toolMetadata.get_forecast.description,
     inputSchema: {
-      // TODO: Define Zod schema based on GetforecastRequestDto
+      // TODO: Define Zod schema based on GetForecastRequestDto
       // param: z.string(),
     },
     callback: buildTool(WeatherService.getForecast.bind(WeatherService)),
@@ -256,11 +256,11 @@ export default tools;`;
     await runScript();
 
     // Check DB Client File
-    const expectedDb = `import { GetuserRequestDto, GetuserResponseDto } from "../dtos/getUser.dto.js";
+    const expectedDb = `import { GetUserRequestDto, GetUserResponseDto } from "../dtos/getUser.dto.js";
 export class WeatherDbClient {
   constructor() {}
 
-  async queryUser(dto: GetuserRequestDto): Promise<GetuserResponseDto | null> {
+  async queryUser(dto: GetUserRequestDto): Promise<GetUserResponseDto | null> {
     // TODO: Implement DB Operation
     return null;
   }
@@ -268,11 +268,11 @@ export class WeatherDbClient {
     expect(mockFs.virtualFileSystem[weatherDbPath].trim()).toBe(expectedDb.trim());
 
     // Check Service File
-    const expectedService = `import { GetuserRequestDto, GetuserResponseDto } from "../dtos/getUser.dto.js";
+    const expectedService = `import { GetUserRequestDto, GetUserResponseDto } from "../dtos/getUser.dto.js";
 export class WeatherService {
   constructor() {}
 
-  async getUser(dto: GetuserRequestDto): Promise<GetuserResponseDto | null> {
+  async getUser(dto: GetUserRequestDto): Promise<GetUserResponseDto | null> {
     // TODO: Implement logic
     // Example: const data = await this.dbClient.queryUser(dto);
     // return data;
