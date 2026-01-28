@@ -1,98 +1,186 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getReadLineInterface, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from '../utils.js';
+import { 
+  askQuestion, 
+  getReadLineInterface, 
+  toPascalCase, 
+  toKebabCase, 
+  toCamelCase, 
+  logEndBanner, 
+  execute 
+} from '../utils.js';
 
 const rl = getReadLineInterface();
 
-async function main() {
-  logBanner("MCP Domain Generator");
+// --- Types ---
 
+interface RawInputs {
+  domainNameRaw: string;
+  addHttpRaw: string;
+  addDbRaw: string;
+  clientMethodNameRaw: string;
+  serviceMethodRaw: string;
+}
+
+interface DomainConfig {
+  domainDirName: string;
+  domainBasePath: string;
+  addHttp: boolean;
+  addDb: boolean;
+  clientMethodName: string;
+  serviceMethodName: string;
+  
+  // Derived Paths
+  paths: {
+    clients: string;
+    services: string;
+    dtos: string;
+    utils: string;
+  };
+
+  // Derived Names
+  names: {
+    domainPascal: string;
+    dtoFileName: string;
+    requestDtoName: string;
+    responseDtoName: string;
+    httpClientClassName: string;
+    dbClientClassName: string;
+    httpClientFileName: string;
+    dbClientFileName: string;
+    serviceClassName: string;
+    serviceFileName: string;
+  };
+}
+
+
+function endMessage() {
+  logEndBanner("Domain");
+
+  console.log(`Don't forget to:`);
+  console.log(`1. Run 'npm run scaffold:tool' to expose this service as an MCP tool.`);
+}
+
+// --- 1. Input Gathering ---
+
+const loadInputs = async (): Promise<RawInputs> => {
   // 1. Domain Name
   const domainNameRaw = (await askQuestion(rl, "1. Domain Name (kebab-case, e.g., weather-data): ")).trim();
-  if (!domainNameRaw) {
-    console.error("Domain name is required.");
-    process.exit(1);
-  }
-  const domainDirName = toKebabCase(domainNameRaw);
-  const domainBasePath = path.join('src/domain', domainDirName);
-
-  if (fs.existsSync(domainBasePath)) {
-    console.error(`Error: Domain '${domainDirName}' already exists.`);
-    process.exit(1);
-  }
-
+  
   // 2. HTTP Client
   const addHttpRaw = (await askQuestion(rl, "2. Add HTTP Client? (y/N): ")).trim().toLowerCase();
-  const addHttp = addHttpRaw === 'y' || addHttpRaw === 'yes';
-
+  
   // 3. DB Client
   const addDbRaw = (await askQuestion(rl, "3. Add DB Client? (y/N): ")).trim().toLowerCase();
-  const addDb = addDbRaw === 'y' || addDbRaw === 'yes';
 
   // 4. Client Method Name (if applicable)
-  let clientMethodName = 'fetchData';
-  if (addHttp || addDb) {
-    const rawMethod = (await askQuestion(rl, "4. Client Method Name (camelCase, e.g., fetchData): ")).trim();
-    if (rawMethod) clientMethodName = toCamelCase(rawMethod);
+  let clientMethodNameRaw = '';
+  if ((addHttpRaw === 'y' || addHttpRaw === 'yes') || (addDbRaw === 'y' || addDbRaw === 'yes')) {
+    clientMethodNameRaw = (await askQuestion(rl, "4. Client Method Name (camelCase, e.g., fetchData): ")).trim();
   }
 
   // 5. Service Method Name
   const serviceMethodRaw = (await askQuestion(rl, "5. Service Method Name (camelCase, e.g., getWeatherData): ")).trim();
-  const serviceMethodName = serviceMethodRaw ? toCamelCase(serviceMethodRaw) : 'getData';
 
-  console.log("\n[INFO] Generating domain structure...\n");
+  return {
+    domainNameRaw,
+    addHttpRaw,
+    addDbRaw,
+    clientMethodNameRaw,
+    serviceMethodRaw
+  };
+};
 
-  // --- Directories ---
-  const clientsDir = path.join(domainBasePath, 'clients');
-  const servicesDir = path.join(domainBasePath, 'services');
-  const dtosDir = path.join(domainBasePath, 'dtos');
-  const utilsDir = path.join(domainBasePath, 'utils');
+// --- 2. Configuration & Validation ---
 
-  fs.mkdirSync(domainBasePath, { recursive: true });
-  fs.mkdirSync(clientsDir);
-  fs.mkdirSync(servicesDir);
-  fs.mkdirSync(dtosDir);
-  if (addHttp) fs.mkdirSync(utilsDir);
+const createDomainConfig = (inputs: RawInputs): DomainConfig => {
+  if (!inputs.domainNameRaw) {
+    throw new Error("Domain name is required.");
+  }
 
-  // --- Names & Paths ---
+  const domainDirName = toKebabCase(inputs.domainNameRaw);
+  const domainBasePath = path.join('src/domain', domainDirName);
+
+  if (fs.existsSync(domainBasePath)) {
+    throw new Error(`Domain '${domainDirName}' already exists.`);
+  }
+
+  const addHttp = inputs.addHttpRaw === 'y' || inputs.addHttpRaw === 'yes';
+  const addDb = inputs.addDbRaw === 'y' || inputs.addDbRaw === 'yes';
+
+  // Method Names
+  let clientMethodName = 'fetchData';
+  if (inputs.clientMethodNameRaw) {
+    clientMethodName = toCamelCase(inputs.clientMethodNameRaw);
+  }
+
+  const serviceMethodName = inputs.serviceMethodRaw ? toCamelCase(inputs.serviceMethodRaw) : 'getData';
+
+  // Naming Conventions
   const domainPascal = toPascalCase(domainDirName);
   
-  // DTOs
-  const dtoFileName = `${serviceMethodName}.dto.ts`;
-  const requestDtoName = `${toPascalCase(serviceMethodName)}RequestDto`;
-  const responseDtoName = `${toPascalCase(serviceMethodName)}ResponseDto`;
+  return {
+    domainDirName,
+    domainBasePath,
+    addHttp,
+    addDb,
+    clientMethodName,
+    serviceMethodName,
+    paths: {
+      clients: path.join(domainBasePath, 'clients'),
+      services: path.join(domainBasePath, 'services'),
+      dtos: path.join(domainBasePath, 'dtos'),
+      utils: path.join(domainBasePath, 'utils'),
+    },
+    names: {
+      domainPascal,
+      dtoFileName: `${serviceMethodName}.dto.ts`,
+      requestDtoName: `${toPascalCase(serviceMethodName)}RequestDto`,
+      responseDtoName: `${toPascalCase(serviceMethodName)}ResponseDto`,
+      httpClientClassName: `${domainPascal}HttpClient`,
+      dbClientClassName: `${domainPascal}DbClient`,
+      httpClientFileName: `${domainDirName}.http.client.ts`,
+      dbClientFileName: `${domainDirName}.db.client.ts`,
+      serviceClassName: `${domainPascal}Service`,
+      serviceFileName: `${domainDirName}.service.ts`,
+    }
+  };
+};
 
-  // Clients
-  const httpClientClassName = `${domainPascal}HttpClient`;
-  const dbClientClassName = `${domainPascal}DbClient`;
-  
-  const httpClientFileName = `${domainDirName}.http.client.ts`;
-  const dbClientFileName = `${domainDirName}.db.client.ts`;
+// --- 3. Directory Setup ---
 
-  // Service
-  const serviceClassName = `${domainPascal}Service`;
-  const serviceFileName = `${domainDirName}.service.ts`;
+const createDirectories = (config: DomainConfig) => {
+  console.log("\n[INFO] Generating domain structure...\n");
+  fs.mkdirSync(config.domainBasePath, { recursive: true });
+  fs.mkdirSync(config.paths.clients);
+  fs.mkdirSync(config.paths.services);
+  fs.mkdirSync(config.paths.dtos);
+  if (config.addHttp) fs.mkdirSync(config.paths.utils);
+};
 
-  // --- File Generation ---
+// --- 4. File Generators ---
 
-  // 1. DTOs
-  const dtoContent = `
-export interface ${requestDtoName} {
+const createDtoFile = (config: DomainConfig) => {
+  const content = `
+export interface ${config.names.requestDtoName} {
   // TODO: Add request properties
   data?: any;
 }
 
-export interface ${responseDtoName} {
+export interface ${config.names.responseDtoName} {
   // TODO: Add response properties
   data?: any;
 }
 `;
-  fs.writeFileSync(path.join(dtosDir, dtoFileName), dtoContent.trim());
-  console.log(`[CREATE] DTO: dtos/${dtoFileName}`);
+  const filePath = path.join(config.paths.dtos, config.names.dtoFileName);
+  fs.writeFileSync(filePath, content.trim());
+  console.log(`[CREATE] DTO: dtos/${config.names.dtoFileName}`);
+};
 
-  // 2. Utils (if HTTP)
-  if (addHttp) {
-    const utilsContent = `
+const createUtilsFile = (config: DomainConfig) => {
+  if (!config.addHttp) return;
+
+  const content = `
 import env from "../../../env.js";
 
 export function getHeaders(): Record<string, string> {
@@ -102,19 +190,21 @@ export function getHeaders(): Record<string, string> {
   return headers;
 }
 `;
-    fs.writeFileSync(path.join(utilsDir, 'api.ts'), utilsContent.trim());
-    console.log(`[CREATE] Utils: utils/api.ts`);
-  }
+  const filePath = path.join(config.paths.utils, 'api.ts');
+  fs.writeFileSync(filePath, content.trim());
+  console.log(`[CREATE] Utils: utils/api.ts`);
+};
 
-  // 3. HTTP Client
-  if (addHttp) {
-    const httpContent = `
+const createHttpClientFile = (config: DomainConfig) => {
+  if (!config.addHttp) return;
+
+  const content = `
 import HttpClient from "../../../api/client.js";
 import { getHeaders } from "../utils/api.js";
 import env from "../../../env.js";
-import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${serviceMethodName}.dto.js";
+import { ${config.names.requestDtoName}, ${config.names.responseDtoName} } from "../dtos/${config.names.dtoFileName.replace('.ts', '.js')}";
 
-export class ${httpClientClassName} {
+export class ${config.names.httpClientClassName} {
   private readonly httpClient: HttpClient;
 
   constructor() {
@@ -122,93 +212,99 @@ export class ${httpClientClassName} {
     this.httpClient = new HttpClient(env.API.Url, getHeaders())
   }
 
-  async ${clientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${config.clientMethodName}(dto: ${config.names.requestDtoName}): Promise<${config.names.responseDtoName} | null> {
     try {
       // TODO: Configure path and method
-      const response = await this.httpClient.post<${responseDtoName}>("/", dto);
+      const response = await this.httpClient.post<${config.names.responseDtoName}>("/", dto);
       return response;
     } catch (error) {
-      console.error("[${httpClientClassName}] Error:", error);
+      console.error("[${config.names.httpClientClassName}] Error:", error);
       return null;
     }
   }
 }
 `;
-    fs.writeFileSync(path.join(clientsDir, httpClientFileName), httpContent.trim());
-    console.log(`[CREATE] HTTP Client: clients/${httpClientFileName}`);
-  }
+  const filePath = path.join(config.paths.clients, config.names.httpClientFileName);
+  fs.writeFileSync(filePath, content.trim());
+  console.log(`[CREATE] HTTP Client: clients/${config.names.httpClientFileName}`);
+};
 
-  // 4. DB Client
-  if (addDb) {
-    const dbContent = `
-import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${serviceMethodName}.dto.js";
+const createDbClientFile = (config: DomainConfig) => {
+  if (!config.addDb) return;
 
-export class ${dbClientClassName} {
-  async ${clientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  const content = `
+import { ${config.names.requestDtoName}, ${config.names.responseDtoName} } from "../dtos/${config.names.dtoFileName.replace('.ts', '.js')}";
+
+export class ${config.names.dbClientClassName} {
+  async ${config.clientMethodName}(dto: ${config.names.requestDtoName}): Promise<${config.names.responseDtoName} | null> {
     // TODO: Implement database logic
     return null;
   }
 }
 `;
-    fs.writeFileSync(path.join(clientsDir, dbClientFileName), dbContent.trim());
-    console.log(`[CREATE] DB Client: clients/${dbClientFileName}`);
-  }
+  const filePath = path.join(config.paths.clients, config.names.dbClientFileName);
+  fs.writeFileSync(filePath, content.trim());
+  console.log(`[CREATE] DB Client: clients/${config.names.dbClientFileName}`);
+};
 
-  // 5. Service
+const createServiceFile = (config: DomainConfig) => {
   const imports: string[] = [];
   const ctorParams: string[] = [];
   const initParams: string[] = [];
   
-  if (addHttp) {
-    imports.push(`import { ${httpClientClassName} } from "../clients/${domainDirName}.http.client.js";`);
-    ctorParams.push(`private readonly httpClient: ${httpClientClassName}`);
-    initParams.push(`new ${httpClientClassName}()`);
+  if (config.addHttp) {
+    imports.push(`import { ${config.names.httpClientClassName} } from "../clients/${config.domainDirName}.http.client.js";`);
+    ctorParams.push(`private readonly httpClient: ${config.names.httpClientClassName}`);
+    initParams.push(`new ${config.names.httpClientClassName}()`);
   }
   
-  if (addDb) {
-    imports.push(`import { ${dbClientClassName} } from "../clients/${domainDirName}.db.client.js";`);
-    ctorParams.push(`private readonly dbClient: ${dbClientClassName}`);
-    initParams.push(`new ${dbClientClassName}()`);
+  if (config.addDb) {
+    imports.push(`import { ${config.names.dbClientClassName} } from "../clients/${config.domainDirName}.db.client.js";`);
+    ctorParams.push(`private readonly dbClient: ${config.names.dbClientClassName}`);
+    initParams.push(`new ${config.names.dbClientClassName}()`);
   }
 
-  imports.push(`import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${serviceMethodName}.dto.js";`);
+  imports.push(`import { ${config.names.requestDtoName}, ${config.names.responseDtoName} } from "../dtos/${config.names.dtoFileName.replace('.ts', '.js')}";`);
 
   // Build method body
   let methodBody = `    // TODO: Implement business logic\n`;
-  if (addHttp || addDb) {
-    const clientVar = addHttp ? 'this.httpClient' : 'this.dbClient'; // prioritize http example if both present, or just show one
-    methodBody += `    const result = await ${clientVar}.${clientMethodName}(dto);\n    return result;`;
+  if (config.addHttp || config.addDb) {
+    const clientVar = config.addHttp ? 'this.httpClient' : 'this.dbClient'; 
+    methodBody += `    const result = await ${clientVar}.${config.clientMethodName}(dto);\n    return result;`;
   } else {
     methodBody += `    return null;`;
   }
 
-  const serviceContent = `
+  const content = `
 ${imports.join('\n')}
 
-export class ${serviceClassName} {
+export class ${config.names.serviceClassName} {
   constructor(${ctorParams.join(', ')}) {}
 
-  async ${serviceMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${config.serviceMethodName}(dto: ${config.names.requestDtoName}): Promise<${config.names.responseDtoName} | null> {
 ${methodBody}
   }
 }
 
-export default new ${serviceClassName}(${initParams.join(', ')});
+export default new ${config.names.serviceClassName}(${initParams.join(', ')});
 `;
 
-  fs.writeFileSync(path.join(servicesDir, serviceFileName), serviceContent.trim());
-  console.log(`[CREATE] Service: services/${serviceFileName}`);
+  const filePath = path.join(config.paths.services, config.names.serviceFileName);
+  fs.writeFileSync(filePath, content.trim());
+  console.log(`[CREATE] Service: services/${config.names.serviceFileName}`);
+};
 
-  logEndBanner("Domain");
+execute(rl, "MCP Domain Generator", async () => {
+  const inputs = await loadInputs();
+  const config = createDomainConfig(inputs);
   
-  console.log(`Don't forget to:`);
-  console.log(`1. Run 'npm run new-tool' to expose this service as an MCP tool.`);
-  
-  rl.close();
-}
+  createDirectories(config);
+  createDtoFile(config);
+  createUtilsFile(config);
+  createHttpClientFile(config);
+  createDbClientFile(config);
+  createServiceFile(config);
 
-main().catch(err => {
-  console.error(err);
-  rl.close();
-  process.exit(1);
+  endMessage();
 });
+
