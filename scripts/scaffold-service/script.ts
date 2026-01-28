@@ -32,17 +32,14 @@ interface RawInputs {
   serviceNameRaw: string;
   methodNameRaw: string;
   
-  // Client selection data
-  dbClientSelection: {
-    choice: string;
-    newName?: string;
-    existingClients: ClientInfo[];
-  };
-  httpClientSelection: {
-    choice: string;
-    newName?: string;
-    existingClients: ClientInfo[];
-  };
+  dbClientSelection: ClientSelectionInput;
+  httpClientSelection: ClientSelectionInput;
+}
+
+interface ClientSelectionInput {
+  choice: string;
+  newName?: string;
+  existingClients: ClientInfo[];
 }
 
 interface ServiceConfig {
@@ -172,119 +169,94 @@ const loadInputs = async (): Promise<RawInputs> => {
   };
 };
 
+const resolveClient = (selection: ClientSelectionInput, type: 'db' | 'http'): ClientInfo | null => {
+  if (selection.choice === '2' && selection.newName) {
+    const nameKebab = toKebabCase(selection.newName);
+    const suffix = type === 'http' ? '.http.client.ts' : '.db.client.ts';
+    const fileName = `${nameKebab}${suffix}`;
+    const classSuffix = type === 'http' ? 'HttpClient' : 'DbClient';
+    
+    return {
+      fileName,
+      className: `${toPascalCase(nameKebab)}${classSuffix}`,
+      importPath: `../clients/${fileName.replace('.ts', '.js')}`,
+      isNew: true
+    };
+  } else if (parseInt(selection.choice) >= 3) {
+    return selection.existingClients[parseInt(selection.choice) - 3];
+  }
+  return null;
+};
+
 const transformInputs = (inputs: RawInputs): ServiceConfig => {
   const { domain, serviceNameRaw, methodNameRaw, dbClientSelection, httpClientSelection } = inputs;
 
-  // Service Names
   const serviceNameKebab = toKebabCase(serviceNameRaw);
-  const serviceClassName = `${toPascalCase(serviceNameKebab)}Service`;
-  const serviceFileName = `${serviceNameKebab}.service.ts`;
-
-  // Method & DTO Names
-  let methodName = '';
-  let requestDtoName = '';
-  let responseDtoName = '';
-  let dtoFileName = '';
+  
+  const config: ServiceConfig = {
+    domainRoot: domain.rootPath,
+    serviceFileName: `${serviceNameKebab}.service.ts`,
+    serviceClassName: `${toPascalCase(serviceNameKebab)}Service`,
+    methodName: '',
+    requestDtoName: '',
+    responseDtoName: '',
+    dtoFileName: '',
+    dbClient: resolveClient(dbClientSelection, 'db'),
+    httpClient: resolveClient(httpClientSelection, 'http')
+  };
 
   if (methodNameRaw) {
-    methodName = toCamelCase(methodNameRaw);
+    const methodName = toCamelCase(methodNameRaw);
     const methodPascal = toPascalCase(methodName);
-    requestDtoName = `${methodPascal}RequestDto`;
-    responseDtoName = `${methodPascal}ResponseDto`;
-    dtoFileName = `${methodName}.dto.ts`;
+    config.methodName = methodName;
+    config.requestDtoName = `${methodPascal}RequestDto`;
+    config.responseDtoName = `${methodPascal}ResponseDto`;
+    config.dtoFileName = `${methodName}.dto.ts`;
   }
 
-  // Resolve DB Client
-  let dbClient: ClientInfo | null = null;
-  if (dbClientSelection.choice === '2' && dbClientSelection.newName) {
-    const nameKebab = toKebabCase(dbClientSelection.newName);
-    const fileName = `${nameKebab}.db.client.ts`;
-    dbClient = {
-      fileName,
-      className: `${toPascalCase(nameKebab)}DbClient`,
-      importPath: `../clients/${fileName.replace('.ts', '.js')}`,
-      isNew: true
-    };
-  } else if (parseInt(dbClientSelection.choice) >= 3) {
-    dbClient = dbClientSelection.existingClients[parseInt(dbClientSelection.choice) - 3];
-  }
-
-  // Resolve HTTP Client
-  let httpClient: ClientInfo | null = null;
-  if (httpClientSelection.choice === '2' && httpClientSelection.newName) {
-    const nameKebab = toKebabCase(httpClientSelection.newName);
-    const fileName = `${nameKebab}.http.client.ts`;
-    httpClient = {
-      fileName,
-      className: `${toPascalCase(nameKebab)}HttpClient`,
-      importPath: `../clients/${fileName.replace('.ts', '.js')}`,
-      isNew: true
-    };
-  } else if (parseInt(httpClientSelection.choice) >= 3) {
-    httpClient = httpClientSelection.existingClients[parseInt(httpClientSelection.choice) - 3];
-  }
-
-  return {
-    domainRoot: domain.rootPath,
-    serviceFileName,
-    serviceClassName,
-    methodName,
-    requestDtoName,
-    responseDtoName,
-    dtoFileName,
-    dbClient,
-    httpClient
-  };
+  return config;
 };
 
-const generateFiles = (config: ServiceConfig) => {
-  console.log("\n[INFO] Generating files...\n");
+const createDtoFile = (config: ServiceConfig) => {
+  if (!config.methodName || !config.dtoFileName) return;
 
-  const { 
-    domainRoot, 
-    serviceFileName, 
-    serviceClassName, 
-    methodName, 
-    requestDtoName, 
-    responseDtoName, 
-    dtoFileName, 
-    dbClient, 
-    httpClient 
-  } = config;
+  const dtoPath = path.join(config.domainRoot, 'dtos', config.dtoFileName);
+  const dtoContent = `export interface ${config.requestDtoName} {\n  // TODO: Add properties\n}\n\nexport interface ${config.responseDtoName} {\n  // TODO: Add properties\n}\n`;
+  
+  if (!fs.existsSync(path.dirname(dtoPath))) fs.mkdirSync(path.dirname(dtoPath), { recursive: true });
+  fs.writeFileSync(dtoPath, dtoContent);
+  console.log(`[CREATE] DTO: ${dtoPath}`);
+};
 
-  // 1. Create DTO if requested
-  if (methodName && dtoFileName) {
-    const dtoPath = path.join(domainRoot, 'dtos', dtoFileName);
-    const dtoContent = `export interface ${requestDtoName} {\n  // TODO: Add properties\n}\n\nexport interface ${responseDtoName} {\n  // TODO: Add properties\n}\n`;
-    
-    if (!fs.existsSync(path.dirname(dtoPath))) fs.mkdirSync(path.dirname(dtoPath), { recursive: true });
-    fs.writeFileSync(dtoPath, dtoContent);
-    console.log(`[CREATE] DTO: ${dtoPath}`);
-  }
+const createDbClientFile = (config: ServiceConfig) => {
+  if (!config.dbClient || !config.dbClient.isNew) return;
 
-  // 2. Create Clients if New
-  const clientsDir = path.join(domainRoot, 'clients');
+  const clientsDir = path.join(config.domainRoot, 'clients');
   if (!fs.existsSync(clientsDir)) fs.mkdirSync(clientsDir, { recursive: true });
 
-  if (dbClient && dbClient.isNew) {
-    const clientPath = path.join(clientsDir, dbClient.fileName);
-    const content = `
-export class ${dbClient.className} {
+  const clientPath = path.join(clientsDir, config.dbClient.fileName);
+  const content = `
+export class ${config.dbClient.className} {
   // TODO: Implement DB logic
 }
 `;
-    fs.writeFileSync(clientPath, content.trim());
-    console.log(`[CREATE] DB Client: ${clientPath}`);
-  }
+  fs.writeFileSync(clientPath, content.trim());
+  console.log(`[CREATE] DB Client: ${clientPath}`);
+};
 
-  if (httpClient && httpClient.isNew) {
-    const clientPath = path.join(clientsDir, httpClient.fileName);
-    const content = `
+const createHttpClientFile = (config: ServiceConfig) => {
+  if (!config.httpClient || !config.httpClient.isNew) return;
+
+  const clientsDir = path.join(config.domainRoot, 'clients');
+  if (!fs.existsSync(clientsDir)) fs.mkdirSync(clientsDir, { recursive: true });
+
+  const clientPath = path.join(clientsDir, config.httpClient.fileName);
+  const content = `
 import HttpClient from "../../../api/client.js";
 import env from "../../../env.js";
 import { getHeaders } from "../utils/api.js";
 
-export class ${httpClient.className} {
+export class ${config.httpClient.className} {
   private readonly httpClient: HttpClient;
 
   constructor() {
@@ -294,32 +266,32 @@ export class ${httpClient.className} {
   // TODO: Implement HTTP logic
 }
 `;
-    fs.writeFileSync(clientPath, content.trim());
-    console.log(`[CREATE] HTTP Client: ${clientPath}`);
-  }
+  fs.writeFileSync(clientPath, content.trim());
+  console.log(`[CREATE] HTTP Client: ${clientPath}`);
+};
 
-  // 3. Create Service
-  const servicesDir = path.join(domainRoot, 'services');
+const createServiceFile = (config: ServiceConfig) => {
+  const servicesDir = path.join(config.domainRoot, 'services');
   if (!fs.existsSync(servicesDir)) fs.mkdirSync(servicesDir, { recursive: true });
 
-  const servicePath = path.join(servicesDir, serviceFileName);
+  const servicePath = path.join(servicesDir, config.serviceFileName);
   
   // Imports
   const imports: string[] = [];
-  if (dbClient) imports.push(`import { ${dbClient.className} } from "${dbClient.importPath}";`);
-  if (httpClient) imports.push(`import { ${httpClient.className} } from "${httpClient.importPath}";`);
-  if (methodName) imports.push(`import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${dtoFileName?.replace('.ts', '.js')}";`);
+  if (config.dbClient) imports.push(`import { ${config.dbClient.className} } from "${config.dbClient.importPath}";`);
+  if (config.httpClient) imports.push(`import { ${config.httpClient.className} } from "${config.httpClient.importPath}";`);
+  if (config.methodName) imports.push(`import { ${config.requestDtoName}, ${config.responseDtoName} } from "../dtos/${config.dtoFileName.replace('.ts', '.js')}";`);
 
   // Constructor Props
   const ctorParams: string[] = [];
-  if (dbClient) ctorParams.push(`private readonly dbClient: ${dbClient.className}`);
-  if (httpClient) ctorParams.push(`private readonly httpClient: ${httpClient.className}`);
+  if (config.dbClient) ctorParams.push(`private readonly dbClient: ${config.dbClient.className}`);
+  if (config.httpClient) ctorParams.push(`private readonly httpClient: ${config.httpClient.className}`);
 
   // Method Implementation
   let methodImpl = '';
-  if (methodName) {
+  if (config.methodName) {
     methodImpl = `
-  async ${methodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${config.methodName}(dto: ${config.requestDtoName}): Promise<${config.responseDtoName} | null> {
     // TODO: Implement logic
     return null;
   }
@@ -328,22 +300,30 @@ export class ${httpClient.className} {
 
   // Default Export Instantiation
   const newParams: string[] = [];
-  if (dbClient) newParams.push(`new ${dbClient.className}()`);
-  if (httpClient) newParams.push(`new ${httpClient.className}()`);
+  if (config.dbClient) newParams.push(`new ${config.dbClient.className}()`);
+  if (config.httpClient) newParams.push(`new ${config.httpClient.className}()`);
 
   const serviceContent = `
 ${imports.join('\n')}
 
-export class ${serviceClassName} {
+export class ${config.serviceClassName} {
   constructor(${ctorParams.join(', ')}) {}
 ${methodImpl}
 }
 
-export default new ${serviceClassName}(${newParams.join(', ')});
+export default new ${config.serviceClassName}(${newParams.join(', ')});
 `;
 
   fs.writeFileSync(servicePath, serviceContent.trim());
   console.log(`[CREATE] Service: ${servicePath}`);
+};
+
+const generateFiles = (config: ServiceConfig) => {
+  console.log("\n[INFO] Generating files...\n");
+  createDtoFile(config);
+  createDbClientFile(config);
+  createHttpClientFile(config);
+  createServiceFile(config);
 };
 
 // --- Run ---
