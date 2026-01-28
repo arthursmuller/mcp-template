@@ -1,20 +1,17 @@
 import * as mockHttpClient from '../../../../tests/mocks/domain.http.client.js';
-import DomainService from './domain.service.js';
+import { DomainService } from './domain.service.js';
 
 // 1. Mock the module using the shared mock file
-jest.mock('../src/domain/domain-name/clients/domain.http.client.js', () => mockHttpClient);
+jest.mock('../clients/domain.http.client.js', () => mockHttpClient);
 
 describe('DomainService', () => {
-  let service: typeof DomainService;
+  let service: DomainService; 
 
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // 2. Instantiate the service.
-    // Since we mocked the module, 'new DomainHttpClient()' inside a factory or here 
-    // would technically use the mock class. However, we can also just instantiate our 
-    // mock class directly to be explicit about the dependency injection.
     const MockClientClass = mockHttpClient.DomainHttpClient;
+    // Now you can construct it because DomainService is the class
     service = new DomainService(new MockClientClass() as any);
   });
 
