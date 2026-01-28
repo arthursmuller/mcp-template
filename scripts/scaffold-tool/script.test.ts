@@ -320,7 +320,8 @@ export default tools;`;
     // Add multiple DB clients
     const DB_CLIENT_2 = `export class AnotherDbClient {}`;
     initFileSystem({
-        [path.join(clientsDir, 'another.db.client.ts')]: DB_CLIENT_2
+        [path.join(clientsDir, 'another.db.client.ts')]: DB_CLIENT_2,
+        [weatherDbPath]: WEATHER_DB_CLIENT // FIX: Explicitly add the default DB client so length is 2
     });
 
     askQuestion
