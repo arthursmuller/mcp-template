@@ -1,14 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { 
-  askQuestion, 
-  getDomainsServicesWithDomainMap, 
-  getReadLineInterface, 
-  toPascalCase, 
-  toKebabCase, 
-  toCamelCase, 
+  askQuestion,
+  getDomainsServicesWithDomainMap,
+  getReadLineInterface,
+  toPascalCase,
+  toKebabCase,
+  toCamelCase,
   logEndBanner,
-  execute 
+  execute
 } from '../utils.js';
 
 const rl = getReadLineInterface();

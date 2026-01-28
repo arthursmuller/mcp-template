@@ -99,7 +99,6 @@ async function main() {
   const requestDtoName = `${toPascalCase(methodName)}RequestDto`;
   const responseDtoName = `${toPascalCase(methodName)}ResponseDto`;
 
-
   // --- Client Selection Logic ---
   
   // 1. HTTP Client

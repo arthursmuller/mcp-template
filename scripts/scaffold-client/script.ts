@@ -1,20 +1,25 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { 
-  askQuestion, 
-  getDomainsServicesWithDomainMap, 
-  getReadLineInterface, 
-  toPascalCase, 
-  toKebabCase, 
-  toCamelCase, 
-  logEndBanner, 
+import {
+  askQuestion,
+  getDomainsServicesWithDomainMap,
+  getReadLineInterface,
+  toPascalCase,
+  toKebabCase,
+  toCamelCase,
+  logEndBanner,
   execute,
   DomainInfo
 } from '../utils.js';
 
 const rl = getReadLineInterface();
 
-// --- Types ---
+// --- Constants & Types ---
+
+const CLIENT_TYPE = {
+  HTTP: '1',
+  DB: '2'
+} as const;
 
 interface RawInputs {
   domainIdxRaw: string;
@@ -26,52 +31,18 @@ interface RawInputs {
 
 interface ClientConfig {
   domain: DomainInfo;
-  isHttp: boolean;
-  clientName: string; // kebab-case
-  methodName: string; // camelCase
-  classNamePrefix: string; // PascalCase
+  type: typeof CLIENT_TYPE[keyof typeof CLIENT_TYPE]; // '1' | '2'
+  clientNameKebab: string; 
+  methodNameCamel: string; 
+  classNamePrefix: string; 
   clientsDir: string;
 }
 
-// --- Helper Functions ---
+// --- Logic Flow ---
 
 /**
- * Retrieves unique domains from the services map
+ * Step 1: Gather all necessary inputs from the user via CLI.
  */
-const getUniqueDomains = (): DomainInfo[] => {
-  return Array.from(
-    new Map(getDomainsServicesWithDomainMap().map((item) => [item.dirName, item])).values()
-  );
-};
-
-/**
- * Generates the utility API file required for HTTP clients if it doesn't exist
- */
-const ensureUtilsApi = (domainDirName: string) => {
-  const utilsDir = path.resolve('src/domain', domainDirName, 'utils');
-  const apiFile = path.join(utilsDir, 'api.ts');
-
-  if (!fs.existsSync(utilsDir)) {
-    fs.mkdirSync(utilsDir, { recursive: true });
-  }
-
-  if (!fs.existsSync(apiFile)) {
-    const content = `
-import env from "../../../env.js";
-
-export function getHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  // headers["Authorization"] = env.API.headers.ApiKey;
-  return headers;
-}
-`;
-    fs.writeFileSync(apiFile, content.trim());
-    console.log(`[INFO] Created missing utils/api.ts for HTTP client.`);
-  }
-};
-
-// --- Execution Steps ---
-
 const loadInputs = async (): Promise<RawInputs> => {
   // 1. List Domains
   const availableDomains = getUniqueDomains();
@@ -87,14 +58,15 @@ const loadInputs = async (): Promise<RawInputs> => {
 
   // 2. Client Type
   console.log("\nClient Type:");
-  console.log("  [1] HTTP Client");
-  console.log("  [2] DB Client");
+  console.log(`  [${CLIENT_TYPE.HTTP}] HTTP Client`);
+  console.log(`  [${CLIENT_TYPE.DB}] DB Client`);
 
   const typeRaw = (await askQuestion(rl, "Select type (number): ")).trim();
 
   // 3. Client Name
-  const isHttp = typeRaw === '1';
-  const nameRaw = (await askQuestion(rl, `\nClient Name (kebab-case, e.g., ${isHttp ? 'weather-api' : 'postgres-db'}): `)).trim();
+  const isHttp = typeRaw === CLIENT_TYPE.HTTP;
+  const exampleName = isHttp ? 'weather-api' : 'postgres-db';
+  const nameRaw = (await askQuestion(rl, `\nClient Name (kebab-case, e.g., ${exampleName}): `)).trim();
 
   // 4. Method Name
   const defaultMethod = isHttp ? 'fetchData' : 'getData';
@@ -103,8 +75,11 @@ const loadInputs = async (): Promise<RawInputs> => {
   return { domainIdxRaw, typeRaw, nameRaw, methodRaw, availableDomains };
 };
 
+/**
+ * Step 2: Validate inputs and transform them into a configuration object.
+ */
 const transformInputs = (inputs: RawInputs): ClientConfig => {
-  // Validate Domain Selection
+  // Validate Domain
   const domainIdx = parseInt(inputs.domainIdxRaw.trim()) - 1;
   if (isNaN(domainIdx) || !inputs.availableDomains[domainIdx]) {
     throw new Error("Invalid domain selection.");
@@ -112,9 +87,7 @@ const transformInputs = (inputs: RawInputs): ClientConfig => {
   const domain = inputs.availableDomains[domainIdx];
 
   // Validate Type
-  const isHttp = inputs.typeRaw === '1';
-  const isDb = inputs.typeRaw === '2';
-  if (!isHttp && !isDb) {
+  if (inputs.typeRaw !== CLIENT_TYPE.HTTP && inputs.typeRaw !== CLIENT_TYPE.DB) {
     throw new Error("Invalid client type.");
   }
 
@@ -122,42 +95,100 @@ const transformInputs = (inputs: RawInputs): ClientConfig => {
   if (!inputs.nameRaw) {
     throw new Error("Client name is required.");
   }
-  const clientName = toKebabCase(inputs.nameRaw);
+  const clientNameKebab = toKebabCase(inputs.nameRaw);
 
   // Process Method Name
-  const defaultMethod = isHttp ? 'fetchData' : 'getData';
-  const methodName = inputs.methodRaw ? toCamelCase(inputs.methodRaw) : defaultMethod;
+  const defaultMethod = inputs.typeRaw === CLIENT_TYPE.HTTP ? 'fetchData' : 'getData';
+  const methodNameCamel = inputs.methodRaw ? toCamelCase(inputs.methodRaw) : defaultMethod;
 
-  const classNamePrefix = toPascalCase(clientName);
+  const classNamePrefix = toPascalCase(clientNameKebab);
   
-  // Construct path based on domain directory name, not the service file path
+  // Construct output directory path
   const clientsDir = path.resolve('src/domain', domain.dirName, 'clients');
 
   return {
     domain,
-    isHttp,
-    clientName,
-    methodName,
+    type: inputs.typeRaw as ClientConfig['type'],
+    clientNameKebab,
+    methodNameCamel,
     classNamePrefix,
     clientsDir
   };
 };
 
-const generateClientFile = (config: ClientConfig) => {
-  // Ensure clients directory exists
-  if (!fs.existsSync(config.clientsDir)) {
-    fs.mkdirSync(config.clientsDir, { recursive: true });
+/**
+ * Step 3: Generate the files based on the configuration.
+ */
+const generateClientFiles = (config: ClientConfig) => {
+  ensureDirectoryExists(config.clientsDir);
+
+  if (config.type === CLIENT_TYPE.HTTP) {
+    generateHttpClient(config);
+  } else {
+    generateDbClient(config);
   }
+};
 
-  if (config.isHttp) {
-    // 1. HTTP Client Generation
-    ensureUtilsApi(config.domain.dirName);
+// --- Generators ---
 
-    const className = `${config.classNamePrefix}HttpClient`;
-    const fileName = `${config.clientName}.http.client.ts`;
-    const fullPath = path.join(config.clientsDir, fileName);
+const generateHttpClient = (config: ClientConfig) => {
+  // HTTP Clients require a shared utility file
+  ensureUtilsApi(config.domain.dirName);
 
-    const content = `
+  const className = `${config.classNamePrefix}HttpClient`;
+  const fileName = `${config.clientNameKebab}.http.client.ts`;
+  const fullPath = path.join(config.clientsDir, fileName);
+
+  const content = getHttpClientTemplate(className, config.methodNameCamel);
+
+  fs.writeFileSync(fullPath, content.trim());
+  console.log(`\n[CREATE] HTTP Client: ${fullPath}`);
+};
+
+const generateDbClient = (config: ClientConfig) => {
+  const className = `${config.classNamePrefix}DbClient`;
+  const fileName = `${config.clientNameKebab}.db.client.ts`;
+  const fullPath = path.join(config.clientsDir, fileName);
+
+  const content = getDbClientTemplate(className, config.methodNameCamel);
+
+  fs.writeFileSync(fullPath, content.trim());
+  console.log(`\n[CREATE] DB Client: ${fullPath}`);
+};
+
+// --- Helpers ---
+
+const getUniqueDomains = (): DomainInfo[] => {
+  return Array.from(
+    new Map(getDomainsServicesWithDomainMap().map((item) => [item.dirName, item])).values()
+  );
+};
+
+const ensureDirectoryExists = (dirPath: string) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
+
+/**
+ * Generates the utility API file required for HTTP clients if it doesn't exist.
+ */
+const ensureUtilsApi = (domainDirName: string) => {
+  const utilsDir = path.resolve('src/domain', domainDirName, 'utils');
+  const apiFile = path.join(utilsDir, 'api.ts');
+
+  ensureDirectoryExists(utilsDir);
+
+  if (!fs.existsSync(apiFile)) {
+    const content = getApiUtilsTemplate();
+    fs.writeFileSync(apiFile, content.trim());
+    console.log(`[INFO] Created missing utils/api.ts for HTTP client.`);
+  }
+};
+
+// --- Templates ---
+
+const getHttpClientTemplate = (className: string, methodName: string) => `
 import HttpClient from "../../../api/client.js";
 import env from "../../../env.js";
 import { getHeaders } from "../utils/api.js";
@@ -169,38 +200,38 @@ export class ${className} {
     this.httpClient = new HttpClient(env.API.Url, getHeaders());
   }
 
-  async ${config.methodName}(dto: any): Promise<any> {
+  async ${methodName}(dto: any): Promise<any> {
     // TODO: Define DTOs for dto and return type
     // return this.httpClient.post("/", dto);
     return null;
   }
 }
 `;
-    fs.writeFileSync(fullPath, content.trim());
-    console.log(`\n[CREATE] HTTP Client: ${fullPath}`);
 
-  } else {
-    // 2. DB Client Generation
-    const className = `${config.classNamePrefix}DbClient`;
-    const fileName = `${config.clientName}.db.client.ts`;
-    const fullPath = path.join(config.clientsDir, fileName);
-
-    const content = `
+const getDbClientTemplate = (className: string, methodName: string) => `
 export class ${className} {
-  async ${config.methodName}(id: string): Promise<any | null> {
+  async ${methodName}(id: string): Promise<any | null> {
     // TODO: Implement database logic
     return null;
   }
 }
 `;
-    fs.writeFileSync(fullPath, content.trim());
-    console.log(`\n[CREATE] DB Client: ${fullPath}`);
-  }
-};
+
+const getApiUtilsTemplate = () => `
+import env from "../../../env.js";
+
+export function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  // headers["Authorization"] = env.API.headers.ApiKey;
+  return headers;
+}
+`;
+
+// --- Execution ---
 
 execute(rl, "MCP Client Generator", async () => {
   const rawInputs = await loadInputs();
   const config = transformInputs(rawInputs);
-  generateClientFile(config);
+  generateClientFiles(config);
   logEndBanner("Client");
 });
