@@ -212,7 +212,10 @@ export default new SimpleLogicService();
   });
 
   test('5. Should handle validation error: Empty Domain Name', async () => {
-    askQuestion.mockResolvedValueOnce(''); // Empty Name
+    // Setup default for subsequent calls to prevent TypeError
+    askQuestion.mockResolvedValue('n'); 
+    // First call is empty
+    askQuestion.mockResolvedValueOnce('');
 
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
     const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {}) as any);
@@ -233,6 +236,9 @@ export default new SimpleLogicService();
     
     (fs.existsSync as jest.Mock).mockImplementation(mockFs.existsSync);
 
+    // Setup default for subsequent calls
+    askQuestion.mockResolvedValue('n');
+    // First call uses duplicate name
     askQuestion.mockResolvedValueOnce('duplicate'); 
 
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();

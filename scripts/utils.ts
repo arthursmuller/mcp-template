@@ -40,7 +40,12 @@ export const splitWordsBySpaceHyphendUnderscoreOrDot = (str: string): string[] =
 };
 
 export const toPascalCase = (str: string): string => {
-  return splitWordsBySpaceHyphendUnderscoreOrDot(str)
+  const words = splitWordsBySpaceHyphendUnderscoreOrDot(str);
+  // If single word and looks like camelCase or PascalCase (has mixed case), preserve it but ensure first char is Upper
+  if (words.length === 1 && /[a-z]/.test(words[0]) && /[A-Z]/.test(words[0])) {
+    return words[0].charAt(0).toUpperCase() + words[0].slice(1);
+  }
+  return words
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join('');
 };
