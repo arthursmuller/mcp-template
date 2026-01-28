@@ -237,7 +237,6 @@ const updateDomainService = (config: ToolConfig) => {
   injectIntoFile(config.domain.absolutePath, (content) => {
     // Add imports
     const importStmt = `import { ${config.requestDtoName}, ${config.responseDtoName} } from "../dtos/${config.methodName}.dto.js";\n`;
-    let newContent = importStmt + content;
 
     // Build method body based on selected clients
     let methodBody = `    // TODO: Implement logic\n`;
@@ -256,13 +255,20 @@ ${methodBody}
     return null;
   }
 `;
-    // Locate the closing brace of the class. 
-    const lastBraceIndex = newContent.lastIndexOf('}');
-    if (lastBraceIndex !== -1) {
-      newContent = newContent.slice(0, lastBraceIndex) + methodImpl + newContent.slice(lastBraceIndex);
-    }
+    // Locate the closing brace of the class IN THE ORIGINAL CONTENT.
+    // If we prepend imports first, lastIndexOf('}') might pick up the brace from the import statement
+    // if the class itself is malformed (missing closing brace).
+    const lastBraceIndex = content.lastIndexOf('}');
     
-    return newContent;
+    if (lastBraceIndex !== -1) {
+      // Inject imports at top, and method body before the last brace of the original content
+      const contentWithMethod = content.slice(0, lastBraceIndex) + methodImpl + content.slice(lastBraceIndex);
+      return importStmt + contentWithMethod;
+    } else {
+      // Graceful fallback for malformed files: just add imports, don't attempt to inject method body
+      // This prevents corrupting the file by injecting code into the import statement or outside the class.
+      return importStmt + content;
+    }
   });
 };
 
