@@ -52,7 +52,7 @@ You must respect the separation of concerns defined in the project structure. Th
 2.  **Initialize the Project:**
     Run the startup script to rename the project, configure your domain, and set up the initial tool structure. This script effectively "detemplatizes" the code for your specific use case.
     ```bash
-    npm run startup-project
+    npm run scaffold:startup
     ```
     *Follow the interactive prompts to set your Project Name, Domain Name, Service Method, and Tool Name.*
 
@@ -71,15 +71,15 @@ You must respect the separation of concerns defined in the project structure. Th
 ### CLI Generators (Recommended)
 This template includes interactive CLI scripts to automate routine tasks and ensure architectural consistency. Run these commands in your terminal and follow the prompts:
 
-* **`npm run new-domain`**
+* **`npm run scaffold:domain`**
     * Creates a new domain module structure (folders for clients, services, DTOs).
     * Use this when adding a distinct area of functionality (e.g., `weather`, `user-management`).
-* **`npm run new-service`**
+* **`npm run scaffold:service`**
     * Adds a new business logic service class to an existing domain.
-* **`npm run new-client`**
+* **`npm run scaffold:client`**
     * Generates an HTTP or Database client wrapper within a domain.
     * Ensures consistent error handling and connection injection.
-* **`npm run new-tool`**
+* **`npm run scaffold:tool`**
     * **Automates the entire "Add a New Tool" process.**
     * It prompts for the domain/service to use, generates the DTOs, injects the method into the Service class, updates `tools.metadata.ts`, and registers the tool in `src/mcp/tools.ts`.
 
