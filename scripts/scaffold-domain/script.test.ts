@@ -277,4 +277,43 @@ export default new SimpleLogicService();
     expect(serviceContent).toContain('export class MyCoolDomainService'); // PascalCase
     expect(serviceContent).toContain('async doSomething(dto: DoSomethingRequestDto)'); // camelCase method, PascalCase DTO
   });
+
+  test('8. Should use default method names when inputs are empty', async () => {
+    // Inputs:
+    // 1. Domain: default-names
+    // 2. HTTP: y
+    // 3. DB: y
+    // 4. Client Method: "" (Empty) -> should become 'fetchData'
+    // 5. Service Method: "" (Empty) -> should become 'getData'
+    askQuestion
+      .mockResolvedValueOnce('default-names')
+      .mockResolvedValueOnce('y')
+      .mockResolvedValueOnce('y')
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce('');
+
+    await runScript();
+
+    const domainPath = path.join(domainRoot, 'default-names');
+    const servicePath = path.join(domainPath, 'services', 'default-names.service.ts');
+    const httpClientPath = path.join(domainPath, 'clients', 'default-names.http.client.ts');
+    const dbClientPath = path.join(domainPath, 'clients', 'default-names.db.client.ts');
+    const dtoPath = path.join(domainPath, 'dtos', 'getData.dto.ts'); // Derived from service method name
+
+    // Verify Service Method Name
+    const serviceContent = mockFs.virtualFileSystem[servicePath];
+    expect(serviceContent).toContain('async getData(dto: GetDataRequestDto)');
+
+    // Verify Client Method Names
+    const httpClientContent = mockFs.virtualFileSystem[httpClientPath];
+    expect(httpClientContent).toContain('async fetchData(dto: GetDataRequestDto)');
+
+    const dbClientContent = mockFs.virtualFileSystem[dbClientPath];
+    expect(dbClientContent).toContain('async fetchData(dto: GetDataRequestDto)');
+
+    // Verify DTO File Name and Content
+    expect(mockFs.virtualFileSystem[dtoPath]).toBeDefined();
+    const dtoContent = mockFs.virtualFileSystem[dtoPath];
+    expect(dtoContent).toContain('export interface GetDataRequestDto');
+  });
 });
