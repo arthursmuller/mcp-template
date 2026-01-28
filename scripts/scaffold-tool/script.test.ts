@@ -409,4 +409,79 @@ export default tools;`;
     // Check that the new tool was registered
     expect(actualTools).toContain('[toolMetadata.dup_tool.name]:');
   });
+
+  test('7. Should handle selection when multiple HTTP clients exist', async () => {
+    // Setup multiple HTTP clients in the file system
+    initFileSystem({
+      [path.join(clientsDir, 'alpha.http.client.ts')]: 'export class AlphaHttpClient {}',
+      [path.join(clientsDir, 'beta.http.client.ts')]: 'export class BetaHttpClient {}',
+    });
+
+    askQuestion
+      .mockResolvedValueOnce('1')             // 1. Domain selection
+      .mockResolvedValueOnce('multi-method')  // 2. Method Name
+      .mockResolvedValueOnce('multi_tool')    // 3. Tool Name
+      .mockResolvedValueOnce('Desc')          // 4. Description
+      .mockResolvedValueOnce('y')             // 5. Add HTTP Client? Yes
+      .mockResolvedValueOnce('3')             // 6. Select 3rd client (Beta) - Weather is 1, Alpha 2, Beta 3
+      .mockResolvedValueOnce('fetch-beta');   // 7. Client Method Name
+
+    await runScript();
+
+    // Verify Beta client was modified
+    const betaPath = path.join(clientsDir, 'beta.http.client.ts');
+    const expectedClientUpdate = `async fetchBeta(dto: MultiMethodRequestDto): Promise<MultiMethodResponseDto | null> {`;
+    expect(mockFs.virtualFileSystem[betaPath]).toContain(expectedClientUpdate);
+    
+    // Verify Alpha client was NOT modified
+    const alphaPath = path.join(clientsDir, 'alpha.http.client.ts');
+    expect(mockFs.virtualFileSystem[alphaPath]).not.toContain('fetchBeta');
+  });
+
+  test('8. Should throw error on invalid domain selection index', async () => {
+    initFileSystem();
+    
+    // Input '99' which is out of bounds for the available domains
+    askQuestion.mockResolvedValueOnce('99'); 
+
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+
+    await runScript();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[FATAL ERROR]'),
+        expect.objectContaining({ message: expect.stringContaining('Invalid selection') })
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  test('9. Should handle malformed service file (no closing brace) gracefully', async () => {
+    // Setup a service file that is missing the closing '}'
+    initFileSystem({
+        [weatherServicePath]: 'export class WeatherService {'
+    });
+
+    askQuestion
+      .mockResolvedValueOnce('1')       // Domain
+      .mockResolvedValueOnce('method')  // Method
+      .mockResolvedValueOnce('tool')    // Tool
+      .mockResolvedValueOnce('desc')    // Desc
+      .mockResolvedValueOnce('n');      // No clients
+
+    await runScript();
+
+    // The script appends imports to the top of the file, but fails to find '}'
+    // so it DOES NOT inject the method body.
+    const modifiedContent = mockFs.virtualFileSystem[weatherServicePath];
+
+    // 1. Should still have added the imports
+    expect(modifiedContent).toContain('import { MethodRequestDto, MethodResponseDto } from "../dtos/method.dto.js";');
+    
+    // 2. Should NOT have added the method body
+    expect(modifiedContent).not.toContain('async method(dto: MethodRequestDto)');
+    
+    // 3. Should still be the broken class
+    expect(modifiedContent).toContain('export class WeatherService {');
+  });
 });
