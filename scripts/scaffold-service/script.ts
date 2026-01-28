@@ -1,8 +1,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { logBanner, askQuestion, getDomainsServicesWithDomainMap, getReadLineInterface, toPascalCase, toKebabCase, toCamelCase, logEndBanner } from '../utils.js';
+import { 
+  askQuestion, 
+  getDomainsServicesWithDomainMap, 
+  getReadLineInterface, 
+  toPascalCase, 
+  toKebabCase, 
+  toCamelCase, 
+  logEndBanner,
+  execute 
+} from '../utils.js';
 
 const rl = getReadLineInterface();
+
+// --- Types ---
 
 interface ClientInfo {
   fileName: string;
@@ -10,6 +21,45 @@ interface ClientInfo {
   importPath: string; // relative to service file
   isNew?: boolean;
 }
+
+interface DomainData {
+  dirName: string;
+  rootPath: string;
+}
+
+interface RawInputs {
+  domain: DomainData;
+  serviceNameRaw: string;
+  methodNameRaw: string;
+  
+  // Client selection data
+  dbClientSelection: {
+    choice: string;
+    newName?: string;
+    existingClients: ClientInfo[];
+  };
+  httpClientSelection: {
+    choice: string;
+    newName?: string;
+    existingClients: ClientInfo[];
+  };
+}
+
+interface ServiceConfig {
+  domainRoot: string;
+  serviceFileName: string;
+  serviceClassName: string;
+  
+  methodName: string;
+  requestDtoName: string;
+  responseDtoName: string;
+  dtoFileName: string;
+  
+  dbClient: ClientInfo | null;
+  httpClient: ClientInfo | null;
+}
+
+// --- Helpers ---
 
 const getClients = (domainDir: string, type: 'db' | 'http'): ClientInfo[] => {
   const clientsDir = path.join(domainDir, 'clients');
@@ -35,13 +85,9 @@ const getClients = (domainDir: string, type: 'db' | 'http'): ClientInfo[] => {
   return clients;
 };
 
-async function main() {
-  logBanner("MCP Service Generator")
-
-  // 1. Select distinct Domains
-  // getDomainsServicesWithDomainMap returns individual service files. We group them by domain directory.
+const getAvailableDomains = (): DomainData[] => {
   const allServices = getDomainsServicesWithDomainMap();
-  const domainsMap = new Map<string, { dirName: string, rootPath: string }>();
+  const domainsMap = new Map<string, DomainData>();
   
   for (const s of allServices) {
     // s.absolutePath is .../src/domain/<domain>/services/<service>.ts
@@ -51,35 +97,90 @@ async function main() {
       domainsMap.set(s.dirName, { dirName: s.dirName, rootPath: domainRoot });
     }
   }
+  return Array.from(domainsMap.values());
+};
 
-  const domains = Array.from(domainsMap.values());
+// --- Execution Steps ---
+
+const loadInputs = async (): Promise<RawInputs> => {
+  // 1. Select Domain
+  const domains = getAvailableDomains();
 
   if (domains.length === 0) {
-    console.error("[mn] No domains found. Please run startup-project first or create a domain manually.");
-    process.exit(1);
+    throw new Error("No domains found. Please run startup-project first or create a domain manually.");
   }
 
   console.log("Available Domains:");
   domains.forEach((d, i) => console.log(`  [${i + 1}] ${d.dirName}`));
   
-  const domainIdx = await askQuestion(rl, "\nSelect Domain (number): ");
-  const selectedDomain = domains[parseInt(domainIdx.trim()) - 1];
+  const domainIdxRaw = await askQuestion(rl, "\nSelect Domain (number): ");
+  const domainIdx = parseInt(domainIdxRaw.trim()) - 1;
+  const selectedDomain = domains[domainIdx];
 
   if (!selectedDomain) {
-    console.error("Invalid selection.");
-    process.exit(1);
+    throw new Error("Invalid selection.");
   }
 
   const domainRoot = selectedDomain.rootPath;
 
   // 2. Service Details
   const serviceNameRaw = (await askQuestion(rl, "Service Name (kebab-case, e.g., user-profile): ")).trim();
+
+  // 3. Method & DTO
+  const methodNameRaw = (await askQuestion(rl, "Add a method name? (camelCase, e.g., getUser, or leave empty): ")).trim();
+
+  // 4. DB Client
+  const existingDbClients = getClients(domainRoot, 'db');
+  console.log("\n--- DB Client Dependency ---");
+  console.log("  [1] None");
+  console.log("  [2] Create New");
+  existingDbClients.forEach((c, i) => console.log(`  [${i + 3}] Use Existing: ${c.className}`));
+  
+  const dbChoice = (await askQuestion(rl, "Select option: ")).trim();
+  let dbNewName: string | undefined;
+  if (dbChoice === '2') {
+    dbNewName = (await askQuestion(rl, "New DB Client Name (kebab-case, e.g., user): ")).trim();
+  }
+
+  // 5. HTTP Client
+  const existingHttpClients = getClients(domainRoot, 'http');
+  console.log("\n--- HTTP Client Dependency ---");
+  console.log("  [1] None");
+  console.log("  [2] Create New");
+  existingHttpClients.forEach((c, i) => console.log(`  [${i + 3}] Use Existing: ${c.className}`));
+  
+  const httpChoice = (await askQuestion(rl, "Select option: ")).trim();
+  let httpNewName: string | undefined;
+  if (httpChoice === '2') {
+    httpNewName = (await askQuestion(rl, "New HTTP Client Name (kebab-case, e.g., weather): ")).trim();
+  }
+
+  return {
+    domain: selectedDomain,
+    serviceNameRaw,
+    methodNameRaw,
+    dbClientSelection: {
+      choice: dbChoice,
+      newName: dbNewName,
+      existingClients: existingDbClients
+    },
+    httpClientSelection: {
+      choice: httpChoice,
+      newName: httpNewName,
+      existingClients: existingHttpClients
+    }
+  };
+};
+
+const transformInputs = (inputs: RawInputs): ServiceConfig => {
+  const { domain, serviceNameRaw, methodNameRaw, dbClientSelection, httpClientSelection } = inputs;
+
+  // Service Names
   const serviceNameKebab = toKebabCase(serviceNameRaw);
   const serviceClassName = `${toPascalCase(serviceNameKebab)}Service`;
   const serviceFileName = `${serviceNameKebab}.service.ts`;
 
-  // 3. Method & DTO
-  const methodNameRaw = (await askQuestion(rl, "Add a method name? (camelCase, e.g., getUser, or leave empty): ")).trim();
+  // Method & DTO Names
   let methodName = '';
   let requestDtoName = '';
   let responseDtoName = '';
@@ -90,66 +191,66 @@ async function main() {
     const methodPascal = toPascalCase(methodName);
     requestDtoName = `${methodPascal}RequestDto`;
     responseDtoName = `${methodPascal}ResponseDto`;
-    dtoFileName = `${methodName}.dto.ts`; // Filename based on method name as per convention
+    dtoFileName = `${methodName}.dto.ts`;
   }
 
-  // 4. Client Dependencies
-  
-  // --- DB Client ---
+  // Resolve DB Client
   let dbClient: ClientInfo | null = null;
-  const existingDbClients = getClients(domainRoot, 'db');
-  
-  console.log("\n--- DB Client Dependency ---");
-  console.log("  [1] None");
-  console.log("  [2] Create New");
-  existingDbClients.forEach((c, i) => console.log(`  [${i + 3}] Use Existing: ${c.className}`));
-  
-  const dbChoice = (await askQuestion(rl, "Select option: ")).trim();
-  
-  if (dbChoice === '2') {
-    const nameRaw = (await askQuestion(rl, "New DB Client Name (kebab-case, e.g., user): ")).trim();
-    const nameKebab = toKebabCase(nameRaw);
-    const className = `${toPascalCase(nameKebab)}DbClient`;
+  if (dbClientSelection.choice === '2' && dbClientSelection.newName) {
+    const nameKebab = toKebabCase(dbClientSelection.newName);
     const fileName = `${nameKebab}.db.client.ts`;
     dbClient = {
       fileName,
-      className,
+      className: `${toPascalCase(nameKebab)}DbClient`,
       importPath: `../clients/${fileName.replace('.ts', '.js')}`,
       isNew: true
     };
-  } else if (parseInt(dbChoice) >= 3) {
-    dbClient = existingDbClients[parseInt(dbChoice) - 3];
+  } else if (parseInt(dbClientSelection.choice) >= 3) {
+    dbClient = dbClientSelection.existingClients[parseInt(dbClientSelection.choice) - 3];
   }
 
-  // --- HTTP Client ---
+  // Resolve HTTP Client
   let httpClient: ClientInfo | null = null;
-  const existingHttpClients = getClients(domainRoot, 'http');
-  
-  console.log("\n--- HTTP Client Dependency ---");
-  console.log("  [1] None");
-  console.log("  [2] Create New");
-  existingHttpClients.forEach((c, i) => console.log(`  [${i + 3}] Use Existing: ${c.className}`));
-  
-  const httpChoice = (await askQuestion(rl, "Select option: ")).trim();
-
-  if (httpChoice === '2') {
-    const nameRaw = (await askQuestion(rl, "New HTTP Client Name (kebab-case, e.g., weather): ")).trim();
-    const nameKebab = toKebabCase(nameRaw);
-    const className = `${toPascalCase(nameKebab)}HttpClient`;
+  if (httpClientSelection.choice === '2' && httpClientSelection.newName) {
+    const nameKebab = toKebabCase(httpClientSelection.newName);
     const fileName = `${nameKebab}.http.client.ts`;
     httpClient = {
       fileName,
-      className,
+      className: `${toPascalCase(nameKebab)}HttpClient`,
       importPath: `../clients/${fileName.replace('.ts', '.js')}`,
       isNew: true
     };
-  } else if (parseInt(httpChoice) >= 3) {
-    httpClient = existingHttpClients[parseInt(httpChoice) - 3];
+  } else if (parseInt(httpClientSelection.choice) >= 3) {
+    httpClient = httpClientSelection.existingClients[parseInt(httpClientSelection.choice) - 3];
   }
 
+  return {
+    domainRoot: domain.rootPath,
+    serviceFileName,
+    serviceClassName,
+    methodName,
+    requestDtoName,
+    responseDtoName,
+    dtoFileName,
+    dbClient,
+    httpClient
+  };
+};
+
+const generateFiles = (config: ServiceConfig) => {
   console.log("\n[INFO] Generating files...\n");
 
-  // --- File Generation ---
+  const { 
+    domainRoot, 
+    serviceFileName, 
+    serviceClassName, 
+    methodName, 
+    requestDtoName, 
+    responseDtoName, 
+    dtoFileName, 
+    dbClient, 
+    httpClient 
+  } = config;
 
   // 1. Create DTO if requested
   if (methodName && dtoFileName) {
@@ -243,14 +344,13 @@ export default new ${serviceClassName}(${newParams.join(', ')});
 
   fs.writeFileSync(servicePath, serviceContent.trim());
   console.log(`[CREATE] Service: ${servicePath}`);
+};
 
+// --- Run ---
+
+execute(rl, "MCP Service Generator", async () => {
+  const inputs = await loadInputs();
+  const config = transformInputs(inputs);
+  generateFiles(config);
   logEndBanner("Service");
-  
-  rl.close();
-}
-
-main().catch(err => {
-  console.error(err);
-  rl.close();
-  process.exit(1);
 });
