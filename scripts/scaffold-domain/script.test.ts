@@ -247,8 +247,8 @@ export default new SimpleLogicService();
     await runScript();
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[FATAL ERROR]'),
-        expect.objectContaining({ message: expect.stringContaining("Domain 'duplicate' already exists") })
+      expect.stringContaining('[FATAL ERROR]'),
+      expect.objectContaining({ message: expect.stringContaining("Domain 'duplicate' already exists") })
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
