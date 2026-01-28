@@ -205,6 +205,7 @@ export class WeatherHttpClient {
     expect(mockFs.virtualFileSystem[weatherHttpPath].trim()).toBe(expectedClient.trim());
 
     // 6. Check MCP Registry (src/mcp/tools.ts)
+    // Ensures import statement is added
     const expectedTools = `import WeatherService from "../domain/weather/services/weather.service.js";
 import z from "zod";
 import { ToolDefinition } from "./utils/dtos.js";
@@ -371,5 +372,41 @@ export default tools;`;
 }
 export default tools;`;
     expect(actualTools).toContain(expectedPart.trim());
+  });
+
+  test('6. Should NOT duplicate import if Service is already imported', async () => {
+    const TOOLS_WITH_IMPORT = `import WeatherService from "../domain/weather/services/weather.service.js";
+import z from "zod";
+import { ToolDefinition } from "./utils/dtos.js";
+import toolMetadata from "../tools.metadata.js";
+import buildTool from "./utils/newTool.js";
+
+const tools: Record<string, ToolDefinition> = {
+  // ... existing tools
+}
+
+export default tools;`;
+
+    initFileSystem({
+        [toolsTsPath]: TOOLS_WITH_IMPORT
+    });
+
+    askQuestion
+      .mockResolvedValueOnce('1')             // Domain (WeatherService)
+      .mockResolvedValueOnce('dup-test')      // Method
+      .mockResolvedValueOnce('dup_tool')      // Tool
+      .mockResolvedValueOnce('Desc')          // Desc
+      .mockResolvedValueOnce('n');            // HTTP? No
+
+    await runScript();
+
+    const actualTools = mockFs.virtualFileSystem[toolsTsPath].replace(/\\/g, '/');
+    
+    // Check that import appears only once
+    const importCount = (actualTools.match(/import WeatherService/g) || []).length;
+    expect(importCount).toBe(1);
+    
+    // Check that the new tool was registered
+    expect(actualTools).toContain('[toolMetadata.dup_tool.name]:');
   });
 });
