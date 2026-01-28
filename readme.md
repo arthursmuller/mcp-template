@@ -8,32 +8,28 @@ This is a **Model Context Protocol (MCP)** server that ...
 
 ## 1. Architectural Layers
 
-You must respect the separation of concerns defined in the project structure:
-
 You must respect the separation of concerns defined in the project structure. These boundaries are **strictly enforced via ESLint**:
 
 * **Entry Point (`index.ts`)**: Initializes the server, connects the transport, and handles the main process loop.
 * **MCP Layer (`src/mcp/`)**: Handles tool definitions, input validation (Zod), and response formatting.
-* `src/mcp/tools.ts`: The registry where tool inputs are mapped to domain functions.
-* **Boundary**: Cannot import directly from `src/api`, Domain Clients, or Domain Utils. It must access functionality **only** via Domain Services.
-
-* `src/mcp/utils/`: Helpers for standardizing responses (`toolSuccessResponse`, `toolErrorResponse`) and wrapping functions.
+    * `src/mcp/tools.ts`: The registry where tool inputs are mapped to domain functions.
+    * **Boundary**: Cannot import directly from `src/api`, Domain Clients, or Domain Utils. It must access functionality **only** via Domain Services.
+    * `src/mcp/utils/`: Helpers for standardizing responses (`toolSuccessResponse`, `toolErrorResponse`) and wrapping functions.
 
 * **Domain Layer (`src/domain/`)**: Contains the business logic and API orchestration.
-* **Boundary**: This layer is protected; it **cannot** import from the `src/mcp` layer.
-* `src/domain/**/services/`: The main service classes where logic resides.
-* **Boundary**: Services cannot import directly from `src/api`. They must access external data via Domain Clients.
-
-* `src/domain/dtos/`: TypeScript interfaces defining the shape of data flowing in and out of the service.
+    * **Boundary**: This layer is protected; it **cannot** import from the `src/mcp` layer.
+    * `src/domain/**/services/`: The main service classes where logic resides.
+    * **Boundary**: Services cannot import directly from `src/api`. They must access external data via Domain Clients.
+    * `src/domain/dtos/`: TypeScript interfaces defining the shape of data flowing in and out of the service.
 
 * **Infrastructure Layer (`src/api/`)**:
-* `src/api/client.ts`: A wrapper around axios for making HTTP requests to external APIs.
+    * `src/api/client.ts`: A wrapper around axios for making HTTP requests to external APIs.
 
 * **Configuration (`src/env.ts`)**:
-* Centralized environment variable management. **Never hardcode secrets or URLs; add them here.**
+    * Centralized environment variable management. **Never hardcode secrets or URLs; add them here.**
 
 * **Tool Descriptions (`src/tools.metadata.ts`)**:
-* Centralized tools text descriptions.
+    * Centralized tools text descriptions.
 
 ## 2. Installation & Initialization
 
@@ -122,6 +118,11 @@ If authentication or base URLs need changing:
 * **Formatting:**
     * Tool output is always a JSON string inside a text block: `content: [{ type: "text", text: JSON.stringify(...) }]`. This is handled by `toolSuccessResponse.ts`.
 
+## 5. Testing
+
+* **Co-location**: Test files (`*.test.ts`) must reside immediately alongside the source files they are testing (e.g., `src/domain/service.ts` -> `src/domain/service.test.ts`). This keeps tests visible and easier to maintain.
+* **Helper Directory**: The `tests/` directory is reserved strictly for helper methods, mocks, and global test configuration. It should **not** contain actual test suites or specification files.
+
 ## Usage
 
 ### Auth Steps
@@ -130,16 +131,13 @@ Explain how to obtain authentication and configure it to run the mcp tools.
 ### Configure VS Code
 
 1. **Open the MCP Configuration File**:
-* **Global (User-level)**:
-* On Windows, press `Win+R`, paste `%APPDATA%\Code\User\mcp.json`, and press Enter.
-* Alternatively, in VS Code Copilot Chat, click the tools/attachments icon (at the bottom menu of the prompt input), hover over any MCP server, and click the gear icon.
-
-
-* **Workspace-level**:
-* Create a `.vscode` folder in your project root if it doesn't exist.
-* Inside it, create a file named `mcp.json`.
-* Add the following json structure to add the config:
-
+    * **Global (User-level)**:
+        * On Windows, press `Win+R`, paste `%APPDATA%\Code\User\mcp.json`, and press Enter.
+        * Alternatively, in VS Code Copilot Chat, click the tools/attachments icon (at the bottom menu of the prompt input), hover over any MCP server, and click the gear icon.
+    * **Workspace-level**:
+        * Create a `.vscode` folder in your project root if it doesn't exist.
+        * Inside it, create a file named `mcp.json`.
+        * Add the following json structure to add the config:
 
 ```javascript
 {
@@ -147,6 +145,7 @@ Explain how to obtain authentication and configure it to run the mcp tools.
       // paste the example-mcp-proj-name config here
    }
 }
+
 ```
 
 2. **Under servers, add**:
@@ -162,6 +161,7 @@ Explain how to obtain authentication and configure it to run the mcp tools.
     "EXAMPLE_TOOL": "true",
   }
 }
+
 ```
 
 > **Note**: Specific note
