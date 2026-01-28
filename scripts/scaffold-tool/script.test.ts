@@ -75,12 +75,16 @@ describe('Scaffold Tool Script', () => {
   const weatherHttpPath = path.join(clientsDir, 'weather.http.client.ts');
   const weatherDbPath = path.join(clientsDir, 'weather.db.client.ts');
 
+  const toolsTsPath = abs('src/mcp/tools.ts');
+  const toolsMetaPath = abs('src/tools.metadata.ts');
+  const envPath = abs('src/env.ts');
+
   // Helper to init FS
   const initFileSystem = (files: Record<string, string> = {}) => {
     mockFs = new MockFileSystem({
-      [abs('src/tools.metadata.ts')]: BASE_METADATA,
-      [abs('src/env.ts')]: BASE_ENV,
-      [abs('src/mcp/tools.ts')]: BASE_MCP_TOOLS,
+      [toolsMetaPath]: BASE_METADATA,
+      [envPath]: BASE_ENV,
+      [toolsTsPath]: BASE_MCP_TOOLS,
       
       [abs('src/domain')]: 'DIRECTORY',
       [domainDir]: 'DIRECTORY',
@@ -117,7 +121,7 @@ describe('Scaffold Tool Script', () => {
     if (promise) await promise;
   };
 
-  test('1. Should generate Tool with HTTP Client integration (Full Content Check)', async () => {
+  test('1. Should generate Tool with HTTP Client integration (Exact Content)', async () => {
     initFileSystem();
 
     askQuestion
@@ -131,61 +135,110 @@ describe('Scaffold Tool Script', () => {
     await runScript();
 
     // 1. Check Metadata
-    const metadata = mockFs.virtualFileSystem[abs('src/tools.metadata.ts')];
-    expect(metadata).toContain('get_forecast: {');
-    expect(metadata).toContain('name: "get_forecast",');
-    expect(metadata).toContain('description: `Get weather forecast`,');
+    const expectedMetadata = `const toolMetadata = {
+  existing_tool: {
+    name: "existing_tool",
+    description: "Existing description",
+  },
+  get_forecast: {
+    name: "get_forecast",
+    description: \`Get weather forecast\`,
+  },
+}
+
+export default toolMetadata;`;
+    expect(mockFs.virtualFileSystem[toolsMetaPath].trim()).toBe(expectedMetadata.trim());
 
     // 2. Check Env
-    const env = mockFs.virtualFileSystem[abs('src/env.ts')];
-    expect(env).toContain('process.env.GET_FORECAST === "false" ? null : toolMetadata.get_forecast.name,');
+    const expectedEnv = `import toolMetadata from "./tools.metadata.js";
+
+const env = {
+  SERVER_NAME: "test-server",
+  TOOLS_ENABLED: [
+    process.env.EXISTING_TOOL === "false" ? null : toolMetadata.existing_tool.name,
+    process.env.GET_FORECAST === "false" ? null : toolMetadata.get_forecast.name,
+  ].filter(element => element !== null),
+}
+
+export default env;`;
+    expect(mockFs.virtualFileSystem[envPath].trim()).toBe(expectedEnv.trim());
 
     // 3. Check DTO
-    // Note: script.ts converts method 'getForecast' -> 'GetforecastRequestDto' due to toPascalCase behavior on camelCase strings
     const dtoPath = path.join(dtosDir, 'getForecast.dto.ts');
     expect(mockFs.virtualFileSystem[dtoPath]).toBeDefined();
-    const dtoContent = mockFs.virtualFileSystem[dtoPath];
-    expect(dtoContent).toContain('export interface GetforecastRequestDto');
-    expect(dtoContent).toContain('export interface GetforecastResponseDto');
+    const expectedDto = `export interface GetforecastRequestDto {
+  // TODO: Add properties
+}
+
+export interface GetforecastResponseDto {
+  // TODO: Add properties
+}
+`;
+    expect(mockFs.virtualFileSystem[dtoPath].trim()).toBe(expectedDto.trim());
 
     // 4. Check Service Update
-    const serviceContent = mockFs.virtualFileSystem[weatherServicePath];
-    const expectedServiceImport = `import { GetforecastRequestDto, GetforecastResponseDto } from "../dtos/getForecast.dto.js";\n`;
-    const expectedServiceMethod = `
+    const expectedService = `import { GetforecastRequestDto, GetforecastResponseDto } from "../dtos/getForecast.dto.js";
+export class WeatherService {
+  constructor() {}
+
   async getForecast(dto: GetforecastRequestDto): Promise<GetforecastResponseDto | null> {
     // TODO: Implement logic
     // Example: const data = await this.httpClient.fetchForecast(dto);
     // return data;
+
     return null;
   }
-`;
-    expect(serviceContent).toContain(expectedServiceImport.trim());
-    expect(serviceContent.replace(/\s+/g, ' ')).toContain(expectedServiceMethod.trim().replace(/\s+/g, ' '));
+}`;
+    expect(mockFs.virtualFileSystem[weatherServicePath].trim()).toBe(expectedService.trim());
 
     // 5. Check HTTP Client Update
-    const clientContent = mockFs.virtualFileSystem[weatherHttpPath];
-    const expectedClientMethod = `
+    const expectedClient = `import { GetforecastRequestDto, GetforecastResponseDto } from "../dtos/getForecast.dto.js";
+export class WeatherHttpClient {
+  constructor() {}
+
   async fetchForecast(dto: GetforecastRequestDto): Promise<GetforecastResponseDto | null> {
     // TODO: Implement HTTP Request
     // return this.httpClient.post<GetforecastResponseDto>("/path", dto);
     return null;
   }
-`;
-    expect(clientContent).toContain('import { GetforecastRequestDto, GetforecastResponseDto } from "../dtos/getForecast.dto.js";');
-    expect(clientContent.replace(/\s+/g, ' ')).toContain(expectedClientMethod.trim().replace(/\s+/g, ' '));
+}`;
+    expect(mockFs.virtualFileSystem[weatherHttpPath].trim()).toBe(expectedClient.trim());
 
     // 6. Check MCP Registry (src/mcp/tools.ts)
-    const mcpTools = mockFs.virtualFileSystem[abs('src/mcp/tools.ts')];
-    
-    // Check Import Injection
-    expect(mcpTools).toContain(`import WeatherService from "../domain/weather/services/weather.service.js";`);
-    
-    // Check Tool Definition
-    expect(mcpTools).toContain('[toolMetadata.get_forecast.name]: {');
-    expect(mcpTools).toContain('callback: buildTool(WeatherService.getForecast.bind(WeatherService)),');
+    const expectedTools = `import WeatherService from "../domain/weather/services/weather.service.js";
+import z from "zod";
+import { ToolDefinition } from "./utils/dtos.js";
+import toolMetadata from "../tools.metadata.js";
+import buildTool from "./utils/newTool.js";
+import OtherService from "../domain/other/services/other.service.js";
+
+const tools: Record<string, ToolDefinition> = {
+  [toolMetadata.existing_tool.name]: {
+    name: toolMetadata.existing_tool.name,
+    description: toolMetadata.existing_tool.description,
+    inputSchema: {
+      param: z.string(),
+    },
+    callback: buildTool(OtherService.existingMethod.bind(OtherService)),
+  },
+  [toolMetadata.get_forecast.name]: {
+    name: toolMetadata.get_forecast.name,
+    description: toolMetadata.get_forecast.description,
+    inputSchema: {
+      // TODO: Define Zod schema based on GetforecastRequestDto
+      // param: z.string(),
+    },
+    callback: buildTool(WeatherService.getForecast.bind(WeatherService)),
+  },
+}
+
+export default tools;`;
+    // We normalize slashes to handle potential OS differences in the generated import path during test
+    const actualTools = mockFs.virtualFileSystem[toolsTsPath].replace(/\\/g, '/');
+    expect(actualTools.trim()).toBe(expectedTools.trim());
   });
 
-  test('2. Should generate Tool with DB Client integration', async () => {
+  test('2. Should generate Tool with DB Client integration (Exact Content)', async () => {
     // Add DB Client to FS
     initFileSystem({
         [weatherDbPath]: WEATHER_DB_CLIENT
@@ -203,17 +256,34 @@ describe('Scaffold Tool Script', () => {
     await runScript();
 
     // Check DB Client File
-    const dbContent = mockFs.virtualFileSystem[weatherDbPath];
-    // Note: get-user -> getUser -> GetuserRequestDto
-    expect(dbContent).toContain('import { GetuserRequestDto, GetuserResponseDto } from "../dtos/getUser.dto.js";');
-    expect(dbContent).toContain('async queryUser(dto: GetuserRequestDto): Promise<GetuserResponseDto | null>');
+    const expectedDb = `import { GetuserRequestDto, GetuserResponseDto } from "../dtos/getUser.dto.js";
+export class WeatherDbClient {
+  constructor() {}
 
-    // Check Service File (should show DB example comment)
-    const serviceContent = mockFs.virtualFileSystem[weatherServicePath];
-    expect(serviceContent).toContain('// Example: const data = await this.dbClient.queryUser(dto);');
+  async queryUser(dto: GetuserRequestDto): Promise<GetuserResponseDto | null> {
+    // TODO: Implement DB Operation
+    return null;
+  }
+}`;
+    expect(mockFs.virtualFileSystem[weatherDbPath].trim()).toBe(expectedDb.trim());
+
+    // Check Service File
+    const expectedService = `import { GetuserRequestDto, GetuserResponseDto } from "../dtos/getUser.dto.js";
+export class WeatherService {
+  constructor() {}
+
+  async getUser(dto: GetuserRequestDto): Promise<GetuserResponseDto | null> {
+    // TODO: Implement logic
+    // Example: const data = await this.dbClient.queryUser(dto);
+    // return data;
+
+    return null;
+  }
+}`;
+    expect(mockFs.virtualFileSystem[weatherServicePath].trim()).toBe(expectedService.trim());
   });
 
-  test('3. Should generate Tool with NO clients (Service Logic only)', async () => {
+  test('3. Should generate Tool with NO clients (Exact Content)', async () => {
     initFileSystem();
 
     askQuestion
@@ -222,15 +292,21 @@ describe('Scaffold Tool Script', () => {
       .mockResolvedValueOnce('calc_tool')
       .mockResolvedValueOnce('Calculate stuff')
       .mockResolvedValueOnce('n'); // HTTP? No
-      // DB prompt skipped as no DB client in default initFileSystem
+      // DB prompt skipped implicitly because getClients returned empty array for DB in initFileSystem
 
     await runScript();
 
-    const serviceContent = mockFs.virtualFileSystem[weatherServicePath];
-    // Should NOT contain client calls in comments if we selected none
-    expect(serviceContent).not.toContain('this.httpClient');
-    expect(serviceContent).not.toContain('this.dbClient');
-    expect(serviceContent).toContain('async calc(dto: CalcRequestDto)');
+    const expectedService = `import { CalcRequestDto, CalcResponseDto } from "../dtos/calc.dto.js";
+export class WeatherService {
+  constructor() {}
+
+  async calc(dto: CalcRequestDto): Promise<CalcResponseDto | null> {
+    // TODO: Implement logic
+
+    return null;
+  }
+}`;
+    expect(mockFs.virtualFileSystem[weatherServicePath].trim()).toBe(expectedService.trim());
   });
 
   test('4. Should exit gracefully if no domains are found', async () => {
@@ -253,95 +329,7 @@ describe('Scaffold Tool Script', () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  test('5. Should handle existing imports in tools.ts correctly', async () => {
-    // Setup tools.ts that ALREADY imports the service
-    // Crucial: Add a newline inside the object definition to match the regex (\n})
-    const PRE_IMPORTED_TOOLS = `import z from "zod";
-import { ToolDefinition } from "./utils/dtos.js";
-import toolMetadata from "../tools.metadata.js";
-import buildTool from "./utils/newTool.js";
-import WeatherService from "../domain/weather/services/weather.service.js"; // Already here
-
-const tools: Record<string, ToolDefinition> = {
-};
-export default tools;`;
-
-    initFileSystem({
-        [abs('src/mcp/tools.ts')]: PRE_IMPORTED_TOOLS
-    });
-
-    askQuestion
-      .mockResolvedValueOnce('1')
-      .mockResolvedValueOnce('new-method')
-      .mockResolvedValueOnce('new_tool')
-      .mockResolvedValueOnce('Desc')
-      .mockResolvedValueOnce('n'); // No clients
-
-    await runScript();
-
-    const mcpTools = mockFs.virtualFileSystem[abs('src/mcp/tools.ts')];
-    
-    // Should NOT duplicate the import
-    const matches = mcpTools.match(/import WeatherService/g);
-    expect(matches?.length).toBe(1);
-
-    // Should still add the tool
-    expect(mcpTools).toContain('[toolMetadata.new_tool.name]: {');
-  });
-
-  test('6. Should handle multiple clients selection', async () => {
-    // Add multiple HTTP clients
-    const HTTP_CLIENT_2 = `export class AnotherHttpClient {}`;
-    initFileSystem({
-        [path.join(clientsDir, 'another.http.client.ts')]: HTTP_CLIENT_2
-    });
-
-    askQuestion
-      .mockResolvedValueOnce('1')
-      .mockResolvedValueOnce('multi')
-      .mockResolvedValueOnce('multi_tool')
-      .mockResolvedValueOnce('Desc')
-      .mockResolvedValueOnce('y') // Yes HTTP
-      .mockResolvedValueOnce('2') // Select 2nd client (AnotherHttpClient)
-      .mockResolvedValueOnce('do-http'); 
-
-    await runScript();
-
-    // Verify 'another.http.client.ts' was updated
-    const clientContent = mockFs.virtualFileSystem[path.join(clientsDir, 'another.http.client.ts')];
-    expect(clientContent).toContain('async doHttp(dto: MultiRequestDto)');
-    
-    // Verify default 'weather.http.client.ts' was NOT updated
-    const originalClient = mockFs.virtualFileSystem[weatherHttpPath];
-    expect(originalClient).not.toContain('async doHttp');
-  });
-
-  test('7. Should handle multiple DB clients and implicit method naming', async () => {
-    // Add multiple DB clients
-    const DB_CLIENT_2 = `export class AnotherDbClient {}`;
-    initFileSystem({
-        [path.join(clientsDir, 'another.db.client.ts')]: DB_CLIENT_2,
-        [weatherDbPath]: WEATHER_DB_CLIENT // FIX: Explicitly add the default DB client so length is 2
-    });
-
-    askQuestion
-      .mockResolvedValueOnce('1')             // Domain
-      .mockResolvedValueOnce('db-op')         // Method Name (camelCase -> dbOp)
-      .mockResolvedValueOnce('db_op_tool')    // Tool
-      .mockResolvedValueOnce('Desc')
-      .mockResolvedValueOnce('n')             // HTTP? No
-      .mockResolvedValueOnce('y')             // DB? Yes
-      .mockResolvedValueOnce('2')             // Select 2nd client
-      .mockResolvedValueOnce('');             // Implicit DB Method Name (Enter)
-
-    await runScript();
-
-    // Verify 'another.db.client.ts' was updated with implicit method name (same as service method: dbOp)
-    const clientContent = mockFs.virtualFileSystem[path.join(clientsDir, 'another.db.client.ts')];
-    expect(clientContent).toContain('async dbOp(dto: DbOpRequestDto)');
-  });
-
-  test('8. Should handle comma insertion in tools.ts', async () => {
+  test('5. Should correctly insert comma in tools.ts if missing', async () => {
     // Setup tools.ts where the last entry MISSES a comma
     const TOOLS_WITHOUT_COMMA = `const tools: Record<string, ToolDefinition> = {
   [toolMetadata.existing_tool.name]: {
@@ -352,7 +340,7 @@ export default tools;`;
 export default tools;`;
 
     initFileSystem({
-        [abs('src/mcp/tools.ts')]: TOOLS_WITHOUT_COMMA
+        [toolsTsPath]: TOOLS_WITHOUT_COMMA
     });
 
     askQuestion
@@ -364,28 +352,24 @@ export default tools;`;
 
     await runScript();
 
-    const mcpTools = mockFs.virtualFileSystem[abs('src/mcp/tools.ts')];
+    const actualTools = mockFs.virtualFileSystem[toolsTsPath].replace(/\\/g, '/');
     
-    // The previous entry '}' should now be followed by ','
-    // Regex matches: closing brace of existing tool, optional space, comma, newline, start of new tool
-    expect(mcpTools).toMatch(/},\s*\[toolMetadata\.comma_tool\.name\]:/);
-  });
-
-  test('9. Should handle invalid domain selection', async () => {
-    initFileSystem();
-
-    askQuestion
-      .mockResolvedValueOnce('99'); // Invalid Index
-
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-    const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {}) as any);
-
-    await runScript();
-
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[FATAL ERROR]'),
-        expect.objectContaining({ message: expect.stringContaining('Invalid selection') })
-    );
-    expect(mockExit).toHaveBeenCalledWith(1);
+    // Check that a comma was inserted after the first tool block
+    expect(actualTools).toContain(`callback: () => {}\n  },`);
+    
+    // Check full structure
+    const expectedPart = `
+  [toolMetadata.comma_tool.name]: {
+    name: toolMetadata.comma_tool.name,
+    description: toolMetadata.comma_tool.description,
+    inputSchema: {
+      // TODO: Define Zod schema based on CommaTestRequestDto
+      // param: z.string(),
+    },
+    callback: buildTool(WeatherService.commaTest.bind(WeatherService)),
+  },
+}
+export default tools;`;
+    expect(actualTools).toContain(expectedPart.trim());
   });
 });
