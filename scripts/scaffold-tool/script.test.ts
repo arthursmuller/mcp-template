@@ -315,4 +315,76 @@ export default tools;`;
     const originalClient = mockFs.virtualFileSystem[weatherHttpPath];
     expect(originalClient).not.toContain('async doHttp');
   });
+
+  test('7. Should handle multiple DB clients and implicit method naming', async () => {
+    // Add multiple DB clients
+    const DB_CLIENT_2 = `export class AnotherDbClient {}`;
+    initFileSystem({
+        [path.join(clientsDir, 'another.db.client.ts')]: DB_CLIENT_2
+    });
+
+    askQuestion
+      .mockResolvedValueOnce('1')             // Domain
+      .mockResolvedValueOnce('db-op')         // Method Name (camelCase -> dbOp)
+      .mockResolvedValueOnce('db_op_tool')    // Tool
+      .mockResolvedValueOnce('Desc')
+      .mockResolvedValueOnce('n')             // HTTP? No
+      .mockResolvedValueOnce('y')             // DB? Yes
+      .mockResolvedValueOnce('2')             // Select 2nd client
+      .mockResolvedValueOnce('');             // Implicit DB Method Name (Enter)
+
+    await runScript();
+
+    // Verify 'another.db.client.ts' was updated with implicit method name (same as service method: dbOp)
+    const clientContent = mockFs.virtualFileSystem[path.join(clientsDir, 'another.db.client.ts')];
+    expect(clientContent).toContain('async dbOp(dto: DbOpRequestDto)');
+  });
+
+  test('8. Should handle comma insertion in tools.ts', async () => {
+    // Setup tools.ts where the last entry MISSES a comma
+    const TOOLS_WITHOUT_COMMA = `const tools: Record<string, ToolDefinition> = {
+  [toolMetadata.existing_tool.name]: {
+    name: "existing",
+    callback: () => {}
+  }
+}
+export default tools;`;
+
+    initFileSystem({
+        [abs('src/mcp/tools.ts')]: TOOLS_WITHOUT_COMMA
+    });
+
+    askQuestion
+      .mockResolvedValueOnce('1')
+      .mockResolvedValueOnce('comma-test')
+      .mockResolvedValueOnce('comma_tool')
+      .mockResolvedValueOnce('Desc')
+      .mockResolvedValueOnce('n');
+
+    await runScript();
+
+    const mcpTools = mockFs.virtualFileSystem[abs('src/mcp/tools.ts')];
+    
+    // The previous entry '}' should now be followed by ','
+    // Regex matches: closing brace of existing tool, optional space, comma, newline, start of new tool
+    expect(mcpTools).toMatch(/},\s*\[toolMetadata\.comma_tool\.name\]:/);
+  });
+
+  test('9. Should handle invalid domain selection', async () => {
+    initFileSystem();
+
+    askQuestion
+      .mockResolvedValueOnce('99'); // Invalid Index
+
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+
+    await runScript();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[FATAL ERROR]'),
+        expect.objectContaining({ message: expect.stringContaining('Invalid selection') })
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
 });

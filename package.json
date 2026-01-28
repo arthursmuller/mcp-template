@@ -10,7 +10,7 @@
     "dev": "ts-node index.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test:all": "jest",
+    "test:scaffold": "jest scripts/",
     "test:scaffold:service": "jest scripts/scaffold-service/",
     "test:scaffold:client": "jest scripts/scaffold-client/",
     "test:scaffold:tool": "jest scripts/scaffold-tool/",
