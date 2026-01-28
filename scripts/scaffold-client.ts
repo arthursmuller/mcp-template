@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getDomainsServicesWithDomainMap, rl, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from './utils.js';
+import { askQuestion, getDomainsServicesWithDomainMap, getReadLineInterface, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from './utils.js';
+const rl = getReadLineInterface();
 
 async function main() {
   logBanner("MCP Client Generator");  
@@ -18,7 +19,7 @@ async function main() {
   console.log("Available Domains:");
   domains.forEach((d, i) => console.log(`  [${i + 1}] ${d.dirName}`));
 
-  const domainIdxRaw = await askQuestion("\nSelect Domain (number): ");
+  const domainIdxRaw = await askQuestion(rl, "\nSelect Domain (number): ");
   const domainIdx = parseInt(domainIdxRaw.trim()) - 1;
 
   if (isNaN(domainIdx) || !domains[domainIdx]) {
@@ -33,7 +34,7 @@ async function main() {
   console.log("  [1] HTTP Client");
   console.log("  [2] DB Client");
 
-  const typeRaw = (await askQuestion("Select type (number): ")).trim();
+  const typeRaw = (await askQuestion(rl, "Select type (number): ")).trim();
   const isHttp = typeRaw === '1';
   const isDb = typeRaw === '2';
 
@@ -43,7 +44,7 @@ async function main() {
   }
 
   // 3. Client Name
-  const nameRaw = (await askQuestion(`\nClient Name (kebab-case, e.g., ${isHttp ? 'weather-api' : 'postgres-db'}): `)).trim();
+  const nameRaw = (await askQuestion(rl, `\nClient Name (kebab-case, e.g., ${isHttp ? 'weather-api' : 'postgres-db'}): `)).trim();
   if (!nameRaw) {
     console.error("Client name is required.");
     process.exit(1);
@@ -52,7 +53,7 @@ async function main() {
 
   // 4. Method Name (Optional)
   const defaultMethod = isHttp ? 'fetchData' : 'getData';
-  const methodRaw = (await askQuestion(`Method Name (Hit enter to skip) (camelCase, default: ${defaultMethod}): `)).trim();
+  const methodRaw = (await askQuestion(rl, `Method Name (Hit enter to skip) (camelCase, default: ${defaultMethod}): `)).trim();
   const methodName = methodRaw ? toCamelCase(methodRaw) : defaultMethod;
 
   const classNamePrefix = toPascalCase(clientName);
