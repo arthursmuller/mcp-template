@@ -10,7 +10,7 @@ import {
   logEndBanner, 
   execute,
   DomainInfo
-} from './utils.js';
+} from '../utils.js';
 
 const rl = getReadLineInterface();
 

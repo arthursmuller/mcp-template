@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 
 // 1. Get real implementation (Synchronous call)
-const actualUtils = jest.requireActual<typeof import('../../scripts/utils.js')>('../../scripts/utils.js');
+const actualUtils = jest.requireActual<typeof import('../../utils.js')>('../../utils.js');
 
 // 2. State tracking
 let executionPromise: Promise<void> | undefined;

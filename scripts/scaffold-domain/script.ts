@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getReadLineInterface, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from './utils.js';
+import { askQuestion, getReadLineInterface, toPascalCase, toKebabCase, toCamelCase, logBanner, logEndBanner } from '../utils.js';
 
 const rl = getReadLineInterface();
 

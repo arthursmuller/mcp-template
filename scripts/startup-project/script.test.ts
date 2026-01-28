@@ -1,10 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { MockFileSystem, abs } from '../utils/file-system.js';
+import { MockFileSystem, abs } from '../tests/utils/file-system.js';
+import * as mockUtils from '../tests/mocks/utils.js';
 
-import * as mockUtils from '../mocks/utils.js';
-
-jest.mock('../../scripts/utils.js', () => mockUtils);
+jest.mock('../utils.js', () => mockUtils);
 jest.mock('fs');
 
 // --- Original File Content Constants ---
@@ -171,7 +170,7 @@ describe('Startup Project Script (Integration Test)', () => {
 
   const runScript = async () => {
     await jest.isolateModulesAsync(async () => {
-      await import('../../scripts/startup-project.js');
+      await import('./script.js');
     });
   };
 

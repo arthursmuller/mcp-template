@@ -1,9 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { MockFileSystem, abs } from '../utils/file-system.js';
-import * as mockUtils from '../mocks/utils.js';
+import { MockFileSystem, abs } from '../tests/utils/file-system.js';
+import * as mockUtils from '../tests/mocks/utils.js';
 
-jest.mock('../../scripts/utils.js', () => mockUtils);
+jest.mock('../utils.js', () => mockUtils);
 jest.mock('fs');
 
 describe('Scaffold Client Script', () => {
@@ -40,7 +40,7 @@ describe('Scaffold Client Script', () => {
 
   const runScript = async () => {
     await jest.isolateModulesAsync(async () => {
-      await import('../../scripts/scaffold-client.js');
+      await import('./script.js');
     });
     
     // Wait for the script execution logic captured by our mock

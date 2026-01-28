@@ -11,11 +11,11 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "jest",
-    "startup-project": "node --loader ts-node/esm scripts/startup-project.ts",
-    "new-tool": "node --loader ts-node/esm scripts/scaffold-tool.ts",
-    "new-service": "node --loader ts-node/esm scripts/scaffold-service.ts",
-    "new-domain": "node --loader ts-node/esm scripts/scaffold-domain.ts",
-    "new-client": "node --loader ts-node/esm scripts/scaffold-client.ts"
+    "startup-project": "node --loader ts-node/esm scripts/startup-project/script.ts",
+    "new-tool": "node --loader ts-node/esm scripts/scaffold-tool/script.ts",
+    "new-service": "node --loader ts-node/esm scripts/scaffold-service/script.ts",
+    "new-domain": "node --loader ts-node/esm scripts/scaffold-domain/script.ts",
+    "new-client": "node --loader ts-node/esm scripts/scaffold-client/script.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.1",
