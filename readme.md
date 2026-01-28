@@ -145,7 +145,6 @@ Explain how to obtain authentication and configure it to run the mcp tools.
       // paste the example-mcp-proj-name config here
    }
 }
-
 ```
 
 2. **Under servers, add**:
@@ -161,7 +160,6 @@ Explain how to obtain authentication and configure it to run the mcp tools.
     "EXAMPLE_TOOL": "true",
   }
 }
-
 ```
 
 > **Note**: Specific note
