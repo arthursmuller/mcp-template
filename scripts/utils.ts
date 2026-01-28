@@ -2,6 +2,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 
+export const execute = async (rl: readline.Interface, startMessage: string, exec: () => Promise<void>) => {
+  logBanner(startMessage);
+  exec().then(() => {
+    rl.close()
+  }).catch(err => {
+    console.error("\n[FATAL ERROR]", err);
+    rl.close();
+    process.exit(1);
+  });
+}
+
 export const getReadLineInterface = () => readline.createInterface({
   input: process.stdin,
   output: process.stdout

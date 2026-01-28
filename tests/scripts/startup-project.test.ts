@@ -4,6 +4,7 @@ import * as path from 'path';
 // 1. Mock utils
 jest.mock('../../scripts/utils', () => ({
   askQuestion: jest.fn(),
+  execute: jest.requireActual('../../scripts/utils').execute,
   getReadLineInterface: jest.fn(()=> ({ close: jest.fn() })) ,
   logBanner: jest.fn(),
   logEndBanner: jest.fn(),

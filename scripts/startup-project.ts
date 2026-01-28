@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { logBanner, askQuestion, toKebabCase, toCamelCase, toSnakeCase, toPascalCase, getReadLineInterface, logEndBanner } from './utils.js';
+import { askQuestion, toKebabCase, toCamelCase, toSnakeCase, toPascalCase, getReadLineInterface, logEndBanner, execute } from './utils.js';
 
 const rl = getReadLineInterface();
 
@@ -331,30 +331,13 @@ const updateMcpRegistry = (config: ProjectConfig) => {
   ]);
 };
 
-// --- Main Execution ---
-
-async function main() {
-  logBanner("MCP Template Initialization CLI");
-
+execute(rl, "MCP Template Initialization CLI", async () => {
   const rawInputs = await loadInputs();
   const config = transformInputs(rawInputs);
-
-
-
   updateGlobalConfig(config);
   updateDomainStructure(config);
   updateDomainContent(config);
   updateMcpRegistry(config);
-
   endMessage(config);
-  
-  rl.close();
-
   cleanup();
-}
-
-main().catch(err => {
-  console.error("\n[FATAL ERROR]", err);
-  rl.close();
-  process.exit(1);
-});
+})
