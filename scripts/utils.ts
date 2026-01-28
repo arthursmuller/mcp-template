@@ -124,3 +124,10 @@ export const getDomainsServicesWithDomainMap = (): DomainInfo[] => {
   }
   return domains;
 };
+
+
+export const getUniqueDomains = (): DomainInfo[] => {
+  return Array.from(
+    new Map(getDomainsServicesWithDomainMap().map((item) => [item.dirName, item])).values()
+  );
+};

@@ -1,34 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { MockFileSystem, abs } from '../utils/file-system.js';
 
-// 1. Mock utils
-jest.mock('../../scripts/utils', () => ({
-  askQuestion: jest.fn(),
-  execute: jest.requireActual('../../scripts/utils').execute,
-  getReadLineInterface: jest.fn(()=> ({ close: jest.fn() })) ,
-  logBanner: jest.fn(),
-  logEndBanner: jest.fn(),
-  toKebabCase: jest.requireActual('../../scripts/utils').toKebabCase,
-  toCamelCase: jest.requireActual('../../scripts/utils').toCamelCase,
-  toPascalCase: jest.requireActual('../../scripts/utils').toPascalCase,
-  toSnakeCase: jest.requireActual('../../scripts/utils').toSnakeCase,
-}));
+import * as mockUtils from '../mocks/utils.js';
 
-import { askQuestion } from '../../scripts/utils.js';
-
-// 2. Mock fs
+jest.mock('../../scripts/utils.js', () => mockUtils);
 jest.mock('fs');
 
 describe('Startup Project Script (Integration Test)', () => {
-  const mockAskQuestion = askQuestion as jest.Mock;
+  const {  askQuestion: mockAskQuestion } = mockUtils as any;
   
-  // Virtual File System State
-  let virtualFileSystem: Record<string, string> = {};
-  let trackedRenames: Record<string, string> = {};
-  let trackedDeletions: string[] = [];
-
-  // Helper to normalize paths
-  const abs = (p: string) => path.resolve(p);
+  let mockFs: MockFileSystem;
 
   // Snapshot of the initial project structure
   const getBaseFileSystem = () => ({
@@ -56,17 +38,16 @@ describe('Startup Project Script (Integration Test)', () => {
     [abs('src/domain/domain-name/dtos/domain.dto.ts')]: 
       'export interface DomainExampleRequestDto {} export interface DomainExampleResponseDto {}',
 
-    // UPDATED: Includes Promise<DomainExampleResponseDto>
+    // Client Files
     [abs('src/domain/domain-name/clients/domain.db.client.ts')]: 
       'import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domain.dto.js";\n' +
       'export class DomainDbClient { async example(_: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> { return null; } }',
 
-    // UPDATED: Includes Promise<DomainExampleResponseDto>
     [abs('src/domain/domain-name/clients/domain.http.client.ts')]: 
       'import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domain.dto.js";\n' +
       'export class DomainHttpClient { async example(dto: DomainExampleRequestDto): Promise<DomainExampleResponseDto | null> { return null; } }',
 
-    // UPDATED: Includes Promise<DomainExampleResponseDto>
+    // Service File
     [abs('src/domain/domain-name/services/domain.service.ts')]: 
       'import { DomainHttpClient } from "../clients/domain.http.client.js";\n' +
       'import { DomainExampleRequestDto, DomainExampleResponseDto } from "../dtos/domain.dto.js";\n' +
@@ -84,56 +65,16 @@ describe('Startup Project Script (Integration Test)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset VFS to clean state for every test
-    virtualFileSystem = getBaseFileSystem();
-    trackedRenames = {};
-    trackedDeletions = [];
+    
+    // Initialize VFS with base state
+    mockFs = new MockFileSystem(getBaseFileSystem());
 
-    // --- FS Implementation ---
-
-    (fs.existsSync as jest.Mock).mockImplementation((filePath: string) => {
-      return !!virtualFileSystem[abs(filePath)];
-    });
-
-    (fs.readFileSync as jest.Mock).mockImplementation((filePath: string) => {
-      const content = virtualFileSystem[abs(filePath)];
-      if (content === undefined) throw new Error(`FNOENT: ${filePath}`);
-      return content;
-    });
-
-    (fs.writeFileSync as jest.Mock).mockImplementation((filePath: string, content: string) => {
-      virtualFileSystem[abs(filePath)] = content;
-    });
-
-    (fs.renameSync as jest.Mock).mockImplementation((oldPath: string, newPath: string) => {
-      const oldAbs = abs(oldPath);
-      const newAbs = abs(newPath);
-      
-      trackedRenames[oldAbs] = newAbs;
-
-      // Recursive Move in VFS
-      // We iterate all keys to find files nested under the renamed directory
-      const keys = Object.keys(virtualFileSystem);
-      for (const key of keys) {
-        if (key === oldAbs) {
-          // Rename the directory/file itself
-          virtualFileSystem[newAbs] = virtualFileSystem[oldAbs];
-          delete virtualFileSystem[oldAbs];
-        } else if (key.startsWith(oldAbs + path.sep)) {
-          // Rename nested file: /old/nested/file -> /new/nested/file
-          const suffix = key.slice(oldAbs.length);
-          const newKey = newAbs + suffix;
-          virtualFileSystem[newKey] = virtualFileSystem[key];
-          delete virtualFileSystem[key];
-        }
-      }
-    });
-
-    (fs.unlinkSync as jest.Mock).mockImplementation((filePath: string) => {
-      const p = abs(filePath);
-      delete virtualFileSystem[p];
-      trackedDeletions.push(p);
-    });
+    // Wire up fs mocks to the shared MockFileSystem implementation
+    (fs.existsSync as jest.Mock).mockImplementation(mockFs.existsSync);
+    (fs.readFileSync as jest.Mock).mockImplementation(mockFs.readFileSync);
+    (fs.writeFileSync as jest.Mock).mockImplementation(mockFs.writeFileSync);
+    (fs.renameSync as jest.Mock).mockImplementation(mockFs.renameSync);
+    (fs.unlinkSync as jest.Mock).mockImplementation(mockFs.unlinkSync);
   });
 
   const runScript = async () => {
@@ -153,26 +94,26 @@ describe('Startup Project Script (Integration Test)', () => {
     await runScript();
 
     // 1. Check package.json updates
-    const pkg = JSON.parse(virtualFileSystem[abs('package.json')]);
+    const pkg = JSON.parse(mockFs.virtualFileSystem[abs('package.json')]);
     expect(pkg.name).toBe('my-weather-api');
-    expect(pkg.description).toBe('my-weather-api'); // MISSING IN ORIGINAL TEST
+    expect(pkg.description).toBe('my-weather-api'); 
 
-    // 2. Check package-lock.json updates (MISSING IN ORIGINAL TEST)
-    const lock = JSON.parse(virtualFileSystem[abs('package-lock.json')]);
+    // 2. Check package-lock.json updates
+    const lock = JSON.parse(mockFs.virtualFileSystem[abs('package-lock.json')]);
     expect(lock.name).toBe('my-weather-api');
 
-    // 3. Check Readme updates (MISSING IN ORIGINAL TEST)
-    const readme = virtualFileSystem[abs('readme.md')];
+    // 3. Check Readme updates
+    const readme = mockFs.virtualFileSystem[abs('readme.md')];
     expect(readme).toContain('# my-weather-api MCP Server');
     expect(readme).not.toContain('example-mcp-proj-name');
     
-    // 4. Check env.ts updates (Existing)
-    const env = virtualFileSystem[abs('src/env.ts')];
+    // 4. Check env.ts updates
+    const env = mockFs.virtualFileSystem[abs('src/env.ts')];
     expect(env).toContain('SERVER_NAME: "my-weather-api"');
     expect(env).toContain('process.env.CURRENT_WEATHER');
 
-    // 5. Check metadata file updates (Existing)
-    const meta = virtualFileSystem[abs('src/tools.metadata.ts')];
+    // 5. Check metadata file updates
+    const meta = mockFs.virtualFileSystem[abs('src/tools.metadata.ts')];
     expect(meta).toContain('current_weather: {');
     expect(meta).toContain('name: "current_weather"');
   });
@@ -191,19 +132,18 @@ describe('Startup Project Script (Integration Test)', () => {
     const newDir = abs('src/domain/user-auth');
     
     // Validate directory rename was called
-    expect(trackedRenames[oldDir]).toBe(newDir);
+    expect(mockFs.trackedRenames[oldDir]).toBe(newDir);
 
     // Validate DTO file rename (happens inside new directory)
-    // Script Logic: domain.dto.ts -> [serviceMethod].dto.ts (login.dto.ts)
     const oldDto = path.join(newDir, 'dtos', 'domain.dto.ts');
     const newDto = path.join(newDir, 'dtos', 'login.dto.ts');
-    expect(trackedRenames[oldDto]).toBe(newDto);
+    expect(mockFs.trackedRenames[oldDto]).toBe(newDto);
     
     // Verify file actually exists in VFS at new path
-    const dtoContent = virtualFileSystem[newDto];
+    const dtoContent = mockFs.virtualFileSystem[newDto];
     expect(dtoContent).toBeDefined();
 
-    // NEW: Verify DTO content replacement
+    // Verify DTO content replacement
     expect(dtoContent).toContain('export interface LoginRequestDto');
     expect(dtoContent).toContain('export interface LoginResponseDto');
   });
@@ -222,23 +162,21 @@ describe('Startup Project Script (Integration Test)', () => {
     const clientsDir = path.join(domainDir, 'clients');
     const servicesDir = path.join(domainDir, 'services');
 
-    // 1. Verify File Renames (Explicit Checks)
-    // The script first renames the domain directory, so subsequent file renames 
-    // happen relative to the new domain directory path.
+    // 1. Verify File Renames
     const oldServicePath = path.join(servicesDir, 'domain.service.ts');
     const newServicePath = path.join(servicesDir, 'order-system.service.ts');
-    expect(trackedRenames[oldServicePath]).toBe(newServicePath);
+    expect(mockFs.trackedRenames[oldServicePath]).toBe(newServicePath);
 
     const oldDbClientPath = path.join(clientsDir, 'domain.db.client.ts');
     const newDbClientPath = path.join(clientsDir, 'order-system.db.client.ts');
-    expect(trackedRenames[oldDbClientPath]).toBe(newDbClientPath);
+    expect(mockFs.trackedRenames[oldDbClientPath]).toBe(newDbClientPath);
 
     const oldHttpClientPath = path.join(clientsDir, 'domain.http.client.ts');
     const newHttpClientPath = path.join(clientsDir, 'order-system.http.client.ts');
-    expect(trackedRenames[oldHttpClientPath]).toBe(newHttpClientPath);
+    expect(mockFs.trackedRenames[oldHttpClientPath]).toBe(newHttpClientPath);
     
     // 2. Verify Service Content Updates
-    const serviceContent = virtualFileSystem[newServicePath];
+    const serviceContent = mockFs.virtualFileSystem[newServicePath];
     expect(serviceContent).toBeDefined();
     expect(serviceContent).toContain('class OrderSystemService');
     expect(serviceContent).toContain('async createOrder(');
@@ -247,7 +185,7 @@ describe('Startup Project Script (Integration Test)', () => {
     expect(serviceContent).toContain('CreateOrderRequestDto');
 
     // 3. Verify HTTP Client Content Updates
-    const httpClientContent = virtualFileSystem[newHttpClientPath];
+    const httpClientContent = mockFs.virtualFileSystem[newHttpClientPath];
     expect(httpClientContent).toBeDefined();
     expect(httpClientContent).toContain('class OrderSystemHttpClient');
     expect(httpClientContent).toContain('async postOrder(');
@@ -255,7 +193,7 @@ describe('Startup Project Script (Integration Test)', () => {
     expect(httpClientContent).toContain('CreateOrderResponseDto');
 
     // 4. Verify DB Client Content Updates
-    const dbClientContent = virtualFileSystem[newDbClientPath];
+    const dbClientContent = mockFs.virtualFileSystem[newDbClientPath];
     expect(dbClientContent).toBeDefined();
     expect(dbClientContent).toContain('class OrderSystemDbClient');
     expect(dbClientContent).toContain('async postOrder(');
@@ -273,7 +211,7 @@ describe('Startup Project Script (Integration Test)', () => {
     await runScript();
 
     const toolsPath = abs('src/mcp/tools.ts');
-    const content = virtualFileSystem[toolsPath];
+    const content = mockFs.virtualFileSystem[toolsPath];
 
     // Check Import path replacement
     expect(content).toContain('from "../domain/billing/services/billing.service.js"');
@@ -281,7 +219,7 @@ describe('Startup Project Script (Integration Test)', () => {
     // Check Class usage
     expect(content).toContain('import BillingService');
     
-    // Check Method binding (camelCase)
+    // Check Method binding
     expect(content).toContain('BillingService.processPayment'); 
     expect(content).toContain('.bind(BillingService)');
     
@@ -295,11 +233,11 @@ describe('Startup Project Script (Integration Test)', () => {
 
     // Check file deletion
     const scriptPath = abs(path.join('scripts', 'startup-project.ts'));
-    expect(trackedDeletions).toContain(scriptPath);
+    expect(mockFs.trackedDeletions).toContain(scriptPath);
 
-    // NEW: Check package.json script removal
-    const pkg = JSON.parse(virtualFileSystem[abs('package.json')]);
+    // Check package.json script removal
+    const pkg = JSON.parse(mockFs.virtualFileSystem[abs('package.json')]);
     expect(pkg.scripts['startup-project']).toBeUndefined();
-    expect(pkg.scripts['start']).toBeDefined(); // Ensure we didn't delete other scripts
+    expect(pkg.scripts['start']).toBeDefined(); 
   });
 });
