@@ -1,25 +1,55 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { askQuestion, getDomainsServicesWithDomainMap, toPascalCase, toCamelCase, toSnakeCase, logBanner, logEndBanner, DomainInfo, getReadLineInterface } from '../utils.js';
+import { 
+  askQuestion, 
+  getDomainsServicesWithDomainMap, 
+  toPascalCase, 
+  toCamelCase, 
+  toSnakeCase, 
+  logEndBanner, 
+  DomainInfo, 
+  getReadLineInterface,
+  execute 
+} from '../utils.js';
 
 const rl = getReadLineInterface();
-  
+
+// --- Types ---
+
 interface ClientInfo {
   fileName: string;
   className: string;
   absolutePath: string;
 }
 
-const endMessage = (selectedDomain: DomainInfo, selectedHttpClient: ClientInfo | null, selectedDbClient: ClientInfo | null, dtoFile: string) => {
-  logEndBanner("Tool");
-  console.log(`Don't forget to:`);
-  console.log(`1. Implement the logic in ${selectedDomain.absolutePath}`);
-  if (selectedHttpClient) console.log(`2. Implement client logic in ${selectedHttpClient.fileName}`);
-  if (selectedDbClient) console.log(`3. Implement client logic in ${selectedDbClient.fileName}`);
-  console.log(`4. Define properties in the new DTO file: ${dtoFile}`);
-  console.log(`5. Define the Zod schema in src/mcp/tools.ts`);
+interface RawInputs {
+  domain: DomainInfo;
+  methodNameRaw: string;
+  toolNameRaw: string;
+  toolDescription: string;
+  httpClientSelection: { client: ClientInfo | null; methodName: string };
+  dbClientSelection: { client: ClientInfo | null; methodName: string };
 }
 
+interface ToolConfig {
+  domain: DomainInfo;
+  methodName: string;
+  toolName: string;
+  toolDescription: string;
+  
+  // Derived Names
+  requestDtoName: string;
+  responseDtoName: string;
+  dtoFile: string;
+
+  // Clients
+  httpClient: ClientInfo | null;
+  httpClientMethodName: string;
+  dbClient: ClientInfo | null;
+  dbClientMethodName: string;
+}
+
+// --- Helpers ---
 
 const getClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[] => {
   const clientsDir = path.resolve('src/domain', domainDirName, 'clients');
@@ -27,7 +57,6 @@ const getClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[] =>
 
   const clients: ClientInfo[] = [];
   const files = fs.readdirSync(clientsDir);
-  
   const suffix = type === 'http' ? '.http.client.ts' : '.db.client.ts';
 
   for (const file of files) {
@@ -47,7 +76,6 @@ const getClients = (domainDirName: string, type: 'http' | 'db'): ClientInfo[] =>
   return clients;
 };
 
-// Helper to inject code into a file
 const injectIntoFile = (filePath: string, injector: (content: string) => string) => {
   const fullPath = path.resolve(filePath);
   if (!fs.existsSync(fullPath)) {
@@ -64,14 +92,13 @@ const injectIntoFile = (filePath: string, injector: (content: string) => string)
   }
 };
 
-async function main() {
-  logBanner("MCP New Tool Generator");
+// --- Execution Steps ---
 
-  // 1. Gather Data
+const loadInputs = async (): Promise<RawInputs> => {
+  // 1. Select Domain
   const domains = getDomainsServicesWithDomainMap();
   if (domains.length === 0) {
-    console.error("[mn] No domains found in src/domain. Please create a domain first.");
-    process.exit(1);
+    throw new Error("[mn] No domains found in src/domain. Please create a domain first.");
   }
 
   console.log("Available Domain Services:");
@@ -83,122 +110,147 @@ async function main() {
   const selectedDomain = domains[parseInt(selectionIndex.trim()) - 1];
 
   if (!selectedDomain) {
-    console.error("Invalid selection.");
-    process.exit(1);
+    throw new Error("Invalid selection.");
   }
 
+  // 2. Tool Details
   const methodNameRaw = (await askQuestion(rl, "New Service Method Name (camelCase, e.g., getWeather): ")).trim();
-  const methodName = toCamelCase(methodNameRaw);
-  
   const toolNameRaw = (await askQuestion(rl, "Tool Name (snake_case, e.g., get_weather): ")).trim();
-  const toolName = toSnakeCase(toolNameRaw);
-
   const toolDescription = (await askQuestion(rl, "Tool Description: ")).trim();
 
-  // Derived Names
-  const requestDtoName = `${toPascalCase(methodName)}RequestDto`;
-  const responseDtoName = `${toPascalCase(methodName)}ResponseDto`;
+  // 3. Client Selection Logic (HTTP)
+  let httpClient: ClientInfo | null = null;
+  let httpClientMethodName = "";
+  const httpClients = getClients(selectedDomain.dirName, 'http');
 
-  // --- Client Selection Logic ---
-  
-  // 1. HTTP Client
-  let selectedHttpClient: ClientInfo | null = null;
-  let httpClientMethodName: string = "";
-  const httpClients =  getClients(selectedDomain.dirName, 'http');
-  
   if (httpClients.length > 0) {
     const wantHttp = (await askQuestion(rl, "\nWant to add a http client method? (y/N): ")).trim().toLowerCase();
     if (wantHttp === 'y' || wantHttp === 'yes') {
       if (httpClients.length === 1) {
-        selectedHttpClient = httpClients[0];
-        console.log(`Selected HTTP Client: ${selectedHttpClient.className}`);
+        httpClient = httpClients[0];
+        console.log(`Selected HTTP Client: ${httpClient.className}`);
       } else {
         console.log("Available HTTP Clients:");
         httpClients.forEach((c, i) => console.log(`  [${i + 1}] ${c.className} (${c.fileName})`));
         const clientIdx = await askQuestion(rl, "Select HTTP Client (number): ");
-        selectedHttpClient = httpClients[parseInt(clientIdx.trim()) - 1];
+        httpClient = httpClients[parseInt(clientIdx.trim()) - 1];
       }
 
-      if (selectedHttpClient) {
-        const methodRaw = (await askQuestion(rl, `HTTP Client Method Name (default: ${methodName}): `)).trim();
-        httpClientMethodName = methodRaw ? toCamelCase(methodRaw) : methodName;
+      if (httpClient) {
+        const methodRaw = (await askQuestion(rl, `HTTP Client Method Name (default: ${toCamelCase(methodNameRaw)}): `)).trim();
+        httpClientMethodName = methodRaw || methodNameRaw;
       }
     }
   }
 
-  // 2. DB Client
-  let selectedDbClient: ClientInfo | null = null;
-  let dbClientMethodName: string = "";
-  const ybClients = getClients(selectedDomain.dirName, 'db');
+  // 4. Client Selection Logic (DB)
+  let dbClient: ClientInfo | null = null;
+  let dbClientMethodName = "";
+  const dbClients = getClients(selectedDomain.dirName, 'db');
 
-  if (ybClients.length > 0) {
+  if (dbClients.length > 0) {
     const wantDb = (await askQuestion(rl, "\nWant to add a db client method? (y/N): ")).trim().toLowerCase();
     if (wantDb === 'y' || wantDb === 'yes') {
-      if (ybClients.length === 1) {
-        selectedDbClient = ybClients[0];
-        console.log(`Selected DB Client: ${selectedDbClient.className}`);
+      if (dbClients.length === 1) {
+        dbClient = dbClients[0];
+        console.log(`Selected DB Client: ${dbClient.className}`);
       } else {
         console.log("Available DB Clients:");
-        ybClients.forEach((c, i) => console.log(`  [${i + 1}] ${c.className} (${c.fileName})`));
+        dbClients.forEach((c, i) => console.log(`  [${i + 1}] ${c.className} (${c.fileName})`));
         const clientIdx = await askQuestion(rl, "Select DB Client (number): ");
-        selectedDbClient = ybClients[parseInt(clientIdx.trim()) - 1];
+        dbClient = dbClients[parseInt(clientIdx.trim()) - 1];
       }
 
-      if (selectedDbClient) {
-        const methodRaw = (await askQuestion(rl, `DB Client Method Name (default: ${methodName}): `)).trim();
-        dbClientMethodName = methodRaw ? toCamelCase(methodRaw) : methodName;
+      if (dbClient) {
+        const methodRaw = (await askQuestion(rl, `DB Client Method Name (default: ${toCamelCase(methodNameRaw)}): `)).trim();
+        dbClientMethodName = methodRaw || methodNameRaw;
       }
     }
   }
 
-  console.log("\n[INFO] Generating tool...\n");
+  return {
+    domain: selectedDomain,
+    methodNameRaw,
+    toolNameRaw,
+    toolDescription,
+    httpClientSelection: { client: httpClient, methodName: httpClientMethodName },
+    dbClientSelection: { client: dbClient, methodName: dbClientMethodName }
+  };
+};
 
-  // 2. Update tools.metadata.ts
+const transformInputs = (inputs: RawInputs): ToolConfig => {
+  const methodName = toCamelCase(inputs.methodNameRaw);
+  const toolName = toSnakeCase(inputs.toolNameRaw);
+  const dtoDir = path.join(path.dirname(inputs.domain.absolutePath), '../dtos');
+  
+  return {
+    domain: inputs.domain,
+    methodName,
+    toolName,
+    toolDescription: inputs.toolDescription,
+    
+    requestDtoName: `${toPascalCase(methodName)}RequestDto`,
+    responseDtoName: `${toPascalCase(methodName)}ResponseDto`,
+    dtoFile: path.join(dtoDir, `${methodName}.dto.ts`),
+
+    httpClient: inputs.httpClientSelection.client,
+    httpClientMethodName: toCamelCase(inputs.httpClientSelection.methodName),
+    
+    dbClient: inputs.dbClientSelection.client,
+    dbClientMethodName: toCamelCase(inputs.dbClientSelection.methodName),
+  };
+};
+
+// --- Generators ---
+
+const updateMetadata = (config: ToolConfig) => {
   injectIntoFile('src/tools.metadata.ts', (content) => {
     const QtEntry = `
-  ${toolName}: {
-    name: "${toolName}",
-    description: \`${toolDescription}\`,
+  ${config.toolName}: {
+    name: "${config.toolName}",
+    description: \`${config.toolDescription}\`,
   },`;
     // Insert before the last closing brace of the object or before "export default"
     return content.replace(/(const toolMetadata = {[\s\S]*?)(\n})/m, `$1${QtEntry}$2`);
   });
+};
 
-  // 3. Update env.ts
+const updateEnv = (config: ToolConfig) => {
   injectIntoFile('src/env.ts', (content) => {
-    // Add the tool toggle to TOOLS_ENABLED
-    const newToggle = `    process.env.${toolName.toUpperCase()} === "false" ? null : toolMetadata.${toolName}.name,`;
+    const newToggle = `    process.env.${config.toolName.toUpperCase()} === "false" ? null : toolMetadata.${config.toolName}.name,`;
     return content.replace(/(TOOLS_ENABLED:\s*\[[\s\S]*?)(\s*\]\.filter)/, `$1\n${newToggle}$2`);
   });
+};
 
-  // 4. Create DTOs
-  const dtoDir = path.join(path.dirname(selectedDomain.absolutePath), '../dtos');
-  if (!fs.existsSync(dtoDir)) fs.mkdirSync(dtoDir, { recursive: true });
+const createDtoFile = (config: ToolConfig) => {
+  if (!fs.existsSync(path.dirname(config.dtoFile))) {
+    fs.mkdirSync(path.dirname(config.dtoFile), { recursive: true });
+  }
 
-  const dtoFile = path.join(dtoDir, `${methodName}.dto.ts`);
+  const content = `export interface ${config.requestDtoName} {\n  // TODO: Add properties\n}\n\nexport interface ${config.responseDtoName} {\n  // TODO: Add properties\n}\n`;
+  fs.writeFileSync(config.dtoFile, content);
+  console.log(`[CREATE] Created ${config.dtoFile}`);
+};
 
-  fs.writeFileSync(dtoFile, `export interface ${requestDtoName} {\n  // TODO: Add properties\n}\n\nexport interface ${responseDtoName} {\n  // TODO: Add properties\n}\n`);
-  console.log(`[CREATE] Created ${dtoFile}`);
-
-  // 5. Update Domain Service (Append Method)
-  injectIntoFile(selectedDomain.absolutePath, (content) => {
+const updateDomainService = (config: ToolConfig) => {
+  injectIntoFile(config.domain.absolutePath, (content) => {
     // Add imports
-    const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${methodName}.dto.js";\n`;
+    const importStmt = `import { ${config.requestDtoName}, ${config.responseDtoName} } from "../dtos/${config.methodName}.dto.js";\n`;
     let newContent = importStmt + content;
 
     // Build method body based on selected clients
     let methodBody = `    // TODO: Implement logic\n`;
     
-    if (selectedHttpClient) {
-      methodBody += `    // Example: const data = await this.httpClient.${httpClientMethodName}(dto);\n`;
+    if (config.httpClient) {
+      methodBody += `    // Example: const data = await this.httpClient.${config.httpClientMethodName}(dto);\n`;
       methodBody += `    // return data;\n`;
-    } else if (selectedDbClient) {
-      methodBody += `    // Example: const data = await this.dbClient.${dbClientMethodName}(dto);\n`;
+    } else if (config.dbClient) {
+      methodBody += `    // Example: const data = await this.dbClient.${config.dbClientMethodName}(dto);\n`;
       methodBody += `    // return data;\n`;
     } 
     
     const methodImpl = `
-  async ${methodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${config.methodName}(dto: ${config.requestDtoName}): Promise<${config.responseDtoName} | null> {
 ${methodBody}
     return null;
   }
@@ -211,19 +263,19 @@ ${methodBody}
     
     return newContent;
   });
+};
 
-  // 6. Update Clients (Inject Methods)
-
+const updateClients = (config: ToolConfig) => {
   // HTTP Client Injection
-  if (selectedHttpClient) {
-    injectIntoFile(selectedHttpClient.absolutePath, (content) => {
-       const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${methodName}.dto.js";\n`;
+  if (config.httpClient) {
+    injectIntoFile(config.httpClient.absolutePath, (content) => {
+       const importStmt = `import { ${config.requestDtoName}, ${config.responseDtoName} } from "../dtos/${config.methodName}.dto.js";\n`;
        let newContent = importStmt + content;
 
        const methodImpl = `
-  async ${httpClientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${config.httpClientMethodName}(dto: ${config.requestDtoName}): Promise<${config.responseDtoName} | null> {
     // TODO: Implement HTTP Request
-    // return this.httpClient.post<${responseDtoName}>("/path", dto);
+    // return this.httpClient.post<${config.responseDtoName}>("/path", dto);
     return null;
   }
 `;
@@ -236,13 +288,13 @@ ${methodBody}
   }
 
   // DB Client Injection
-  if (selectedDbClient) {
-    injectIntoFile(selectedDbClient.absolutePath, (content) => {
-       const importStmt = `import { ${requestDtoName}, ${responseDtoName} } from "../dtos/${methodName}.dto.js";\n`;
+  if (config.dbClient) {
+    injectIntoFile(config.dbClient.absolutePath, (content) => {
+       const importStmt = `import { ${config.requestDtoName}, ${config.responseDtoName} } from "../dtos/${config.methodName}.dto.js";\n`;
        let newContent = importStmt + content;
 
        const methodImpl = `
-  async ${dbClientMethodName}(dto: ${requestDtoName}): Promise<${responseDtoName} | null> {
+  async ${config.dbClientMethodName}(dto: ${config.requestDtoName}): Promise<${config.responseDtoName} | null> {
     // TODO: Implement DB Operation
     return null;
   }
@@ -254,17 +306,17 @@ ${methodBody}
        return newContent;
     });
   }
+};
 
-  // 7. Update src/mcp/tools.ts
+const updateMcpRegistry = (config: ToolConfig) => {
   injectIntoFile('src/mcp/tools.ts', (content) => {
     let newContent = content;
 
     // Ensure Domain Service is imported
-    if (!newContent.includes(`import ${selectedDomain.className}`)) {
+    if (!newContent.includes(`import ${config.domain.className}`)) {
        // Calculate relative path from src/mcp/tools.ts to the service file
-       // e.g. ../domain/<dir>/services/<file>.js
        const toolsDir = path.resolve('src/mcp');
-       const relativePath = path.relative(toolsDir, selectedDomain.absolutePath);
+       const relativePath = path.relative(toolsDir, config.domain.absolutePath);
        
        // Ensure POSIX paths for imports and replace extension
        let importPath = relativePath.split(path.sep).join('/').replace(/\.ts$/, '.js');
@@ -274,24 +326,19 @@ ${methodBody}
          importPath = `./${importPath}`;
        }
        
-       newContent = `import ${selectedDomain.className} from "${importPath}";\n` + newContent;
-    }
-
-    // Ensure we define the tool correctly in the existing tools object
-    if (!newContent.includes(`import ${selectedDomain.className}`)) {
-       // Fallback check if the class name used in import differs (unlikely with this script)
+       newContent = `import ${config.domain.className} from "${importPath}";\n` + newContent;
     }
 
     // Add the tool definition
     const toolDef = `
-  [toolMetadata.${toolName}.name]: {
-    name: toolMetadata.${toolName}.name,
-    description: toolMetadata.${toolName}.description,
+  [toolMetadata.${config.toolName}.name]: {
+    name: toolMetadata.${config.toolName}.name,
+    description: toolMetadata.${config.toolName}.description,
     inputSchema: {
-      // TODO: Define Zod schema based on ${requestDtoName}
+      // TODO: Define Zod schema based on ${config.requestDtoName}
       // param: z.string(),
     },
-    callback: buildTool(${selectedDomain.className}.${methodName}).bind(${selectedDomain.className})),
+    callback: buildTool(${config.domain.className}.${config.methodName}.bind(${config.domain.className})),
   },`;
 
     // Regex to capture the tools object content and append the new tool
@@ -317,15 +364,32 @@ ${methodBody}
 
     return newContent;
   });
+};
 
-  endMessage(selectedDomain, selectedHttpClient, selectedDbClient, dtoFile);
+const showNextSteps = (config: ToolConfig) => {
+  logEndBanner("Tool");
+  console.log(`Don't forget to:`);
+  console.log(`1. Implement the logic in ${config.domain.absolutePath}`);
+  if (config.httpClient) console.log(`2. Implement client logic in ${config.httpClient.fileName}`);
+  if (config.dbClient) console.log(`3. Implement client logic in ${config.dbClient.fileName}`);
+  console.log(`4. Define properties in the new DTO file: ${config.dtoFile}`);
+  console.log(`5. Define the Zod schema in src/mcp/tools.ts`);
+};
+
+// --- Main Execution ---
+
+execute(rl, "MCP New Tool Generator", async () => {
+  const inputs = await loadInputs();
+  const config = transformInputs(inputs);
+
+  console.log("\n[INFO] Generating tool...\n");
+
+  updateMetadata(config);
+  updateEnv(config);
+  createDtoFile(config);
+  updateDomainService(config);
+  updateClients(config);
+  updateMcpRegistry(config);
   
-  rl.close();
-}
-
-main().catch(err => {
-  console.error("\n[FATAL ERROR]", err);
-  rl.close();
-  process.exit(1);
+  showNextSteps(config);
 });
-
