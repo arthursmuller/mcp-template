@@ -307,4 +307,3 @@ execute(rl, "MCP Domain Generator", async () => {
 
   endMessage();
 });
-
