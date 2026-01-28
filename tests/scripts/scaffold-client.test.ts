@@ -48,7 +48,7 @@ describe('Scaffold Client Script', () => {
     if (promise) await promise;
   };
 
-  test('1. Should generate an HTTP Client and create missing utils/api.ts', async () => {
+  test('1. Should generate an HTTP Client with custom method name and create missing utils/api.ts (Full Content Check)', async () => {
     askQuestion
       .mockResolvedValueOnce('1')           // Domain
       .mockResolvedValueOnce('1')           // HTTP
@@ -67,21 +67,63 @@ describe('Scaffold Client Script', () => {
     expect(mockFs.virtualFileSystem[clientFile]).toBeDefined();
     expect(mockFs.virtualFileSystem[apiUtilFile]).toBeDefined();
     
-    expect(mockFs.virtualFileSystem[clientFile]).toContain('class OpenMeteoHttpClient');
+    // Verify exact content of the HTTP Client file
+    const expectedClientContent = `
+import HttpClient from "../../../api/client.js";
+import env from "../../../env.js";
+import { getHeaders } from "../utils/api.js";
+
+export class OpenMeteoHttpClient {
+  private readonly httpClient: HttpClient;
+
+  constructor() {
+    this.httpClient = new HttpClient(env.API.Url, getHeaders());
+  }
+
+  async getForecast(dto: any): Promise<any> {
+    // TODO: Define DTOs for dto and return type
+    // return this.httpClient.post("/", dto);
+    return null;
+  }
+}
+`.trim();
+    expect(mockFs.virtualFileSystem[clientFile].trim()).toBe(expectedClientContent);
+
+    // Verify exact content of the Utils file
+    const expectedUtilsContent = `
+import env from "../../../env.js";
+
+export function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  // headers["Authorization"] = env.API.headers.ApiKey;
+  return headers;
+}
+`.trim();
+    expect(mockFs.virtualFileSystem[apiUtilFile].trim()).toBe(expectedUtilsContent);
   });
 
-  test('2. Should generate a DB Client', async () => {
+  test('2. Should generate a DB Client with default method name (Full Content Check)', async () => {
     askQuestion
       .mockResolvedValueOnce('1')           // Domain
       .mockResolvedValueOnce('2')           // DB
       .mockResolvedValueOnce('user-db')     // Name
-      .mockResolvedValueOnce('');           // Default Method
+      .mockResolvedValueOnce('');           // Default Method (empty string -> getData)
 
     await runScript();
 
     const clientFile = path.join(domainPath, 'clients', 'user-db.db.client.ts');
     expect(mockFs.virtualFileSystem[clientFile]).toBeDefined();
-    expect(mockFs.virtualFileSystem[clientFile]).toContain('class UserDbDbClient');
+    
+    // Verify exact content of the DB Client file
+    const expectedDbClientContent = `
+export class UserDbDbClient {
+  async getData(id: string): Promise<any | null> {
+    // TODO: Implement database logic
+    return null;
+  }
+}
+`.trim();
+    expect(mockFs.virtualFileSystem[clientFile].trim()).toBe(expectedDbClientContent);
   });
 
   test('3. Should not overwrite existing utils/api.ts', async () => {
@@ -118,9 +160,9 @@ describe('Scaffold Client Script', () => {
   test('5. Should handle invalid selection inputs', async () => {
     askQuestion
         .mockResolvedValueOnce('99')    // Invalid Index
-        .mockResolvedValueOnce('1')     // Dummy
-        .mockResolvedValueOnce('dummy') // Dummy
-        .mockResolvedValueOnce('dummy');// Dummy
+        .mockResolvedValueOnce('1')     // Dummy Type
+        .mockResolvedValueOnce('dummy') // Dummy Name
+        .mockResolvedValueOnce('dummy');// Dummy Method
     
     const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {}) as any);
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -130,6 +172,44 @@ describe('Scaffold Client Script', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('[FATAL ERROR]'),
         expect.objectContaining({ message: expect.stringContaining('Invalid domain selection') })
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  test('6. Should throw error on invalid client type selection', async () => {
+    askQuestion
+      .mockResolvedValueOnce('1')      // Valid Domain
+      .mockResolvedValueOnce('3')      // Invalid Type
+      .mockResolvedValueOnce('name')   // Name (needed to complete prompt loop)
+      .mockResolvedValueOnce('');      // Method (needed to complete prompt loop)
+  
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+  
+    await runScript();
+  
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[FATAL ERROR]'),
+      expect.objectContaining({ message: expect.stringContaining('Invalid client type') })
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  test('7. Should throw error on empty client name', async () => {
+    askQuestion
+      .mockResolvedValueOnce('1') // Valid Domain
+      .mockResolvedValueOnce('1') // Valid Type
+      .mockResolvedValueOnce('')  // Empty Name (Invalid)
+      .mockResolvedValueOnce(''); // Method (needed to complete prompt loop)
+  
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+  
+    await runScript();
+  
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[FATAL ERROR]'),
+      expect.objectContaining({ message: expect.stringContaining('Client name is required') })
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
