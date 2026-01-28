@@ -13,6 +13,7 @@
     "test:all": "jest",
     "test:scaffold:service": "jest scripts/scaffold-service/",
     "test:scaffold:client": "jest scripts/scaffold-client/",
+    "test:scaffold:tool": "jest scripts/scaffold-tool/",
     "test:scaffold:startup": "jest scripts/startup-project/",
     "scaffold:startup": "node --loader ts-node/esm scripts/startup-project/script.ts",
     "scaffold:tool": "node --loader ts-node/esm scripts/scaffold-tool/script.ts",

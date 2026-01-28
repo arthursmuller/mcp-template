@@ -376,8 +376,6 @@ const showNextSteps = (config: ToolConfig) => {
   console.log(`5. Define the Zod schema in src/mcp/tools.ts`);
 };
 
-// --- Main Execution ---
-
 execute(rl, "MCP New Tool Generator", async () => {
   const inputs = await loadInputs();
   const config = transformInputs(inputs);
